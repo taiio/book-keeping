@@ -1,0 +1,7 @@
+export const JOURNAL_TRANSACTION_STATE = {
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  CANCELLED_OR_EXPIRED: 'CANCELLED_OR_EXPIRED',
+} as const;
+
+export type JournalTransactionStateValue = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];

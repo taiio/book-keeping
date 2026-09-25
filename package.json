@@ -1,0 +1,26 @@
+{
+  "name": "ledger-refactor",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "start": "ts-node src/index.ts",
+    "test:manual": "ts-node src/test/run.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "pg": "^8.11.5",
+    "reflect-metadata": "^0.2.2",
+    "sequelize": "^6.37.3",
+    "sequelize-typescript": "^2.1.6",
+    "tsyringe": "^4.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/validator": "^13.11.9",
+    "prettier": "^3.9.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
