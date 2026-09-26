@@ -1,6 +1,13 @@
 export interface GetOrCreateBookParams {
-  /** Khoá idempotency thật sự (không phải suy ra từ "name") — retry-safe. */
-  idempotencyToken: string;
+  /**
+   * LƯU Ý: Book KHÔNG có cột idempotency_token — dedup dựa hoàn toàn vào
+   * khoá tự nhiên (client_id, account_id, asset_type_id, wallet_type_id,
+   * book_purpose_id, transaction_state_id), được enforce bởi
+   * `idx_unique_book` ở DB. Field idempotencyToken từng bị truyền vào đây
+   * (dưới dạng randomUUID() ở tầng flow) nhưng bị Sequelize âm thầm bỏ
+   * qua vì Book model không có field này — đã bỏ khỏi interface để không
+   * ai tưởng nhầm nó có tác dụng.
+   */
   name: string;
   bookPurposeId: number;
   transactionStateId: number;
@@ -11,7 +18,6 @@ export interface GetOrCreateBookParams {
   assetTicker: string;
   walletTypeId: number;
   address?: string | null;
-  amount: string;
   createdBy?: number | null;
 }
 

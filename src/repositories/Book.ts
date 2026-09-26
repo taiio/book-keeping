@@ -1,38 +1,76 @@
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { Book, BookHistory } from '../models';
+import { Book, BookHistory, BookPosting } from '../models';
 import { NotFoundError, InsufficientBalanceError } from '../common/errors';
-import type { UpdateBookParams } from './interfaces';
+import type { GetOrCreateBookParams, GetOrCreateBookResult, UpdateBookParams } from './interfaces';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 
+export interface GetAvailableBalanceParams {
+  bookId: number;
+  assetTypeId: number;
+}
+export interface ReserveBalanceParams {
+  bookId: number;
+  assetTypeId: number;
+  amount: string;
+  journalTransactionId: number;
+  idempotencyToken: string;
+}
+export interface FinalizeReservedBalanceParams {
+  bookId: number;
+  assetTypeId: number;
+  amount: string;
+  journalTransactionId: number;
+  idempotencyToken: string;
+}
 @singleton()
 @autoInjectable()
 export class BookRepository {
-  async getOrCreateBook(params: any, transaction: Transaction): Promise<Book> {
-    const existing = await Book.findOne({
+  private readonly bookPosting: BookPosting;
+
+  constructor(bookPosting?: BookPosting) {
+    this.bookPosting = bookPosting!;
+  }
+  /**
+   * Idempotent theo khoá tự nhiên (client_id, account_id, asset_type_id,
+   * wallet_type_id, book_purpose_id, transaction_state_id) — đúng với
+   * `idx_unique_book`.
+   *
+   * Trước đây: `findOne` rồi `create`, cùng 1 race TOCTOU như
+   * JournalTransactionRepository — 2 flow (vd deposit đang chạy song song
+   * với chính nó do client bấm 2 lần / retry ở tầng gateway) có thể cùng
+   * SELECT ra "chưa có book" rồi cùng INSERT, 1 trong 2 sẽ vỡ unique
+   * constraint và văng lỗi thay vì im lặng trả về book đã tồn tại.
+   *
+   * Dùng `findOrCreate` để nhờ Sequelize xử lý bằng SAVEPOINT nội bộ
+   * (SELECT -> INSERT -> nếu unique violation thì rollback về savepoint và
+   * SELECT lại), toàn bộ vẫn nằm trong transaction của unitOfWork.
+   */
+  async getOrCreateBook(params: GetOrCreateBookParams, transaction: Transaction): Promise<GetOrCreateBookResult> {
+    const [book, created] = await Book.findOrCreate({
       where: {
         clientId: params.clientId,
         accountId: params.accountId,
         assetTypeId: params.assetTypeId,
         walletTypeId: params.walletTypeId,
         bookPurposeId: params.bookPurposeId,
-        name: params.name,
         transactionStateId: params.transactionStateId,
+      },
+      defaults: {
+        name: params.name,
+        assetId: params.assetId,
+        assetTicker: params.assetTicker,
+        address: params.address ?? null,
+        amount: '0',
+        lastSequenceNo: 0,
+        createdBy: params.createdBy ?? null,
       },
       transaction,
     });
 
-    if (existing) {
-      return existing;
-    }
-
-    const book = await Book.create({ ...params, amount: '0' }, { transaction });
-
-    return book;
+    return { book, created };
   }
-
-  /** SELECT ... FOR UPDATE — book row là điểm serialize hoá mọi posting ghi vào nó. */
 
   async lockBookById(bookId: number, tx: Transaction): Promise<Book> {
     const book = await Book.findByPk(bookId, { transaction: tx, lock: tx.LOCK.UPDATE });
@@ -45,9 +83,30 @@ export class BookRepository {
   }
 
   /**
-   * Áp dụng thay đổi số dư lên 1 book ĐÃ khoá, đồng thời ghi 1 dòng BookHistory
-   * (snapshot số dư sau khi áp dụng). Đây là nơi duy nhất được phép sửa Book.amount.
+   * Khoá nhiều book cùng lúc, LUÔN theo thứ tự id tăng dần, bất kể thứ tự
+   * bookId truyền vào.
+   *
+   * Lý do: mọi flow (deposit, withdraw, stake, unstake...) trong hệ thống
+   * này đều phải lock 2 book (vd CLIENT_ASSET_ACCOUNT và
+   * CUSTODY_CONTROL_ACCOUNT) trong CÙNG 1 transaction. Nếu flow A khoá
+   * book X trước rồi tới Y, còn flow B (chạy song song, vd unstake đang
+   * chạy cùng lúc với 1 stake khác) lại khoá Y trước rồi tới X, đây chính
+   * là công thức kinh điển của deadlock: Postgres phải chọn 1 transaction
+   * để abort. Ép mọi nơi lock theo thứ tự id tăng dần loại bỏ hoàn toàn
+   * khả năng đó — tại mọi thời điểm, "ai khoá được row có id nhỏ hơn
+   * trước" luôn nhất quán giữa các transaction.
    */
+  async lockBooksInOrder(bookIds: number[], tx: Transaction): Promise<Map<number, Book>> {
+    const uniqueSortedIds = Array.from(new Set(bookIds)).sort((a, b) => a - b);
+    const result = new Map<number, Book>();
+
+    for (const id of uniqueSortedIds) {
+      result.set(id, await this.lockBookById(id, tx));
+    }
+
+    return result;
+  }
+
   async updateBook(params: UpdateBookParams, transaction: Transaction): Promise<Book> {
     const { book, amountDelta, sequenceNo, bookPostingId, transactionStateId, historyTransactionTypeId, updatedBy } = params;
 
@@ -77,7 +136,7 @@ export class BookRepository {
 
     await BookHistory.create(
       {
-        historyTransactionTypeId: 1,
+        historyTransactionTypeId,
         bookId: book.id,
         bookPostingId: bookPostingId ?? null,
         amount: book.amount,
@@ -88,5 +147,89 @@ export class BookRepository {
     );
 
     return book;
+  }
+
+  async getAvailableBalance(bookId: number, assetTypeId: number, transaction: Transaction): Promise<string> {
+    const book = await Book.findOne({
+      where: { id: bookId, assetTypeId },
+      attributes: ['id', 'assetTypeId', 'availableBalance'],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!book) {
+      throw new Error(`Book ${bookId} with assetTypeId ${assetTypeId} not found`);
+    }
+    return String(book.get('availableBalance'));
+  }
+  async reserveBalance(params: ReserveBalanceParams, transaction: Transaction): Promise<void> {
+    const { bookId, assetTypeId, amount, journalTransactionId, idempotencyToken } = params;
+
+    const existingPosting = await BookPosting.findOne({ where: { idempotencyToken }, transaction });
+    if (existingPosting) {
+      return;
+    }
+
+    const [affectedRows] = await Book.update(
+      {
+        availableBalance: this.sequelizeLiteral(`available_balance - ${this.escapeDecimal(amount)}`),
+        lockedBalance: this.sequelizeLiteral(`locked_balance + ${this.escapeDecimal(amount)}`),
+      },
+      { where: { id: bookId, assetTypeId, availableBalance: { [Op.gte]: amount } }, transaction },
+    );
+    if (affectedRows !== 1) {
+      throw new Error(`Insufficient balance for book=${bookId}, assetTypeId=${assetTypeId}, amount=${amount}`);
+    }
+
+    await BookPosting.create(
+      {
+        bookId,
+        journalTransactionId,
+        amount: `-${amount}`,
+        assetTypeId,
+        idempotencyToken,
+        /** * Replace with your actual enum/value. */ bookPostingPurposeId: 'WITHDRAWAL_RESERVE',
+        historyTransactionTypeId: 'POSTING_APPLIED',
+      },
+      { transaction },
+    );
+  }
+
+  async finalizeReservedBalance(params: FinalizeReservedBalanceParams, transaction: Transaction): Promise<void> {
+    const { bookId, assetTypeId, amount, journalTransactionId, idempotencyToken } = params;
+    const existingPosting = await BookPosting.findOne({ where: { idempotencyToken }, transaction });
+    if (existingPosting) {
+      return;
+    }
+    const [affectedRows] = await Book.update(
+      { lockedBalance: this.sequelizeLiteral(`locked_balance - ${this.escapeDecimal(amount)}`) },
+      { where: { id: bookId, assetTypeId, lockedBalance: { [Op.gte]: amount } }, transaction },
+    );
+    if (affectedRows !== 1) {
+      throw new Error(`Insufficient locked balance for book=${bookId}, assetTypeId=${assetTypeId}, amount=${amount}`);
+    }
+
+    await BookPosting.create(
+      {
+        bookId,
+        journalTransactionId,
+        amount: `-${amount}`,
+        assetTypeId,
+        idempotencyToken,
+
+        bookPostingPurposeId: 'WITHDRAWAL_AMOUNT',
+        historyTransactionTypeId: 'POSTING_APPLIED',
+      },
+      { transaction },
+    );
+  }
+
+  private sequelizeLiteral(expression: string) {
+    return expression as any;
+  }
+  private escapeDecimal(value: string): string {
+    if (!/^\d+(\.\d+)?$/.test(value)) {
+      throw new Error(`Invalid decimal value: ${value}`);
+    }
+    return value;
   }
 }

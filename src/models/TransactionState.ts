@@ -1,6 +1,8 @@
 import { Table, Column, Model, DataType, PrimaryKey, HasMany } from 'sequelize-typescript';
 
 import { Book } from './Book';
+import { JournalTransaction } from './JournalTransaction';
+import { JournalTransactionHistory } from './JournalTransactionHistory';
 
 @Table({
   tableName: 'transaction_state',
@@ -46,4 +48,16 @@ export class TransactionState extends Model {
     as: 'books',
   })
   declare books: Book[];
+
+  @HasMany(() => JournalTransaction, {
+    foreignKey: 'transactionStateId',
+    as: 'journalTransactions',
+  })
+  declare journalTransactions: JournalTransaction[];
+
+  @HasMany(() => JournalTransactionHistory, {
+    foreignKey: 'transactionStateId',
+    as: 'journalTransactionHistories',
+  })
+  declare journalTransactionHistories: JournalTransactionHistory[];
 }

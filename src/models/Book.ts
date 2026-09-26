@@ -17,7 +17,7 @@ import { BookHistory } from './BookHistory';
     },
   ],
 })
-export class Book extends Model<Book> {
+export class Book extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column({

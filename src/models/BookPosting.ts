@@ -15,6 +15,16 @@ import { BOOK_POSTING_PURPOSE } from '../constants';
       unique: true,
       fields: ['book_id', 'sequence_no'],
     },
+    {
+      // Đây là chốt chặn cứng ở tầng DB cho idempotency của 1 posting.
+      // Nếu thiếu index này, check "findOne theo idempotencyToken rồi mới
+      // insert" ở tầng app chỉ là optimistic, hoàn toàn có thể bị race khi
+      // 2 event trùng nhau (duplicate webhook/duplicate message) đến gần
+      // như đồng thời: cả 2 đều SELECT không thấy gì rồi cùng INSERT.
+      name: 'uk_book_posting_idempotency_token',
+      unique: true,
+      fields: ['idempotency_token'],
+    },
   ],
 })
 export class BookPosting extends Model {
@@ -127,6 +137,7 @@ export class BookPosting extends Model {
     field: 'idempotency_token',
     type: DataType.STRING(64),
     allowNull: false,
+    unique: 'uk_book_posting_idempotency_token',
   })
   declare idempotencyToken: string;
 

@@ -36,3 +36,22 @@ export const TRANSACTION_STATE = {
 } as const;
 
 export type TransactionStateKey = keyof typeof TRANSACTION_STATE;
+
+/**
+ * Rank tường minh cho từng transaction state, dùng để so sánh "state nào
+ * đứng trước/sau state nào" (guard monotonic khi advance một journal).
+ *
+ * Cố tình khai báo tường minh thay vì dùng thẳng `TRANSACTION_STATE.X.id`
+ * làm rank: id là khoá định danh ổn định cho FK/DB, còn thứ tự vòng đời là
+ * một khái niệm nghiệp vụ riêng — nếu sau này có ai chèn thêm 1 state mới
+ * với id không nằm đúng vị trí tuần tự (vd thêm "REJECTED" với id = 6 nhưng
+ * đứng trước SENT về mặt nghiệp vụ), guard vẫn đúng vì rank được khai báo
+ * độc lập với id.
+ */
+export const TRANSACTION_STATE_RANK: Record<number, number> = {
+  [TRANSACTION_STATE.AUTHORIZING.id]: 0,
+  [TRANSACTION_STATE.AUTHORIZED.id]: 1,
+  [TRANSACTION_STATE.SENT.id]: 2,
+  [TRANSACTION_STATE.CONFIRMING.id]: 3,
+  [TRANSACTION_STATE.CONFIRMED.id]: 4,
+};

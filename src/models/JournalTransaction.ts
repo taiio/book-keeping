@@ -1,7 +1,8 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Index } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Index, ForeignKey, BelongsTo } from 'sequelize-typescript';
 
 import { JournalTransactionHistory } from './JournalTransactionHistory';
 import { BookPosting } from './BookPosting';
+import { TransactionState } from './TransactionState';
 import { JOURNAL_TRANSACTION_STATE } from '../constants';
 import { JournalTransactionStateValue } from '../constants/journalTransactionState';
 
@@ -115,6 +116,32 @@ export class JournalTransaction extends Model {
     defaultValue: JOURNAL_TRANSACTION_STATE.ACTIVE,
   })
   declare journalTransactionState: JournalTransactionStateValue;
+
+  /**
+   * State chi tiết HIỆN TẠI của vòng đời nghiệp vụ (AUTHORIZING / AUTHORIZED /
+   * SENT / CONFIRMING / CONFIRMED — xem TRANSACTION_STATE), khác với
+   * `journalTransactionState` ở trên vốn chỉ có 3 giá trị thô
+   * (ACTIVE/COMPLETED/CANCELLED_OR_EXPIRED).
+   *
+   * Đây là cột "cache" — luôn phản ánh giá trị MỚI NHẤT, để
+   * updateJournalTransaction() đọc được ngay trong cùng 1 lần
+   * SELECT ... FOR UPDATE (không cần thêm round-trip dò ngược
+   * journal_transaction_history). Lịch sử đầy đủ nằm ở cột cùng tên bên
+   * JournalTransactionHistory.
+   */
+  @ForeignKey(() => TransactionState)
+  @Column({
+    field: 'transaction_state_id',
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  declare transactionStateId: number | null;
+
+  @BelongsTo(() => TransactionState, {
+    foreignKey: 'transactionStateId',
+    as: 'transactionState',
+  })
+  declare transactionState: TransactionState;
 
   // ============================================================
   // Business date
