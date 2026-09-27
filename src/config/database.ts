@@ -7,25 +7,26 @@ import { BookPurpose } from '../models/BookPurpose';
 import { JournalTransaction } from '../models/JournalTransaction';
 import { JournalTransactionHistory } from '../models/JournalTransactionHistory';
 import { TransactionState } from '../models/TransactionState';
+import { env } from './env';
 
 export const sequelize = new Sequelize({
   dialect: 'postgres',
 
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT ?? 5433),
+  host: env.db.host,
+  port: env.db.port,
 
-  database: process.env.DB_NAME ?? 'bookkeeping',
-  username: process.env.DB_USER ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? 'postgres',
+  database: env.db.name,
+  username: env.db.user,
+  password: env.db.password,
 
   models: [BookPurpose, TransactionState, JournalTransaction, JournalTransactionHistory, Book, BookPosting, BookHistory],
 
-  logging: true,
+  logging: env.db.logging ? console.log : false,
 
   pool: {
-    max: 20,
-    min: 2,
-    acquire: 30_000,
-    idle: 10_000,
+    max: env.db.poolMax,
+    min: env.db.poolMin,
+    acquire: env.db.poolAcquireMs,
+    idle: env.db.poolIdleMs,
   },
 });

@@ -4,11 +4,11 @@ import crypto from 'crypto';
 import { container } from '../di/container';
 import { sequelize } from '../config/database';
 import { Book } from '../models';
-import { DepositFlow, WithdrawFlow, StakeFlow } from '../logics';
-import { DepositRequest } from '../logics/DepositFlow';
-import { WithdrawRequest } from '../logics/WithdrawFlow';
-import { StakeRequest } from '../logics/StakeFlow';
-import { AssetBookDescriptor } from '../logics/types';
+import { DepositFlow, WithdrawFlow, StakeFlow } from '../domain';
+import { DepositRequest } from '../domain/deposit/DepositFlow';
+import { WithdrawRequest } from '../domain/withdraw/WithdrawFlow';
+import { StakeRequest } from '../domain/stake/StakeFlow';
+import { AssetBookDescriptor } from '../domain/shared/types';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { WithdrawRejectedError, InvalidStateTransitionError } from '../common/errors';
 

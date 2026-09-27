@@ -1,6 +1,6 @@
 import { sequelize } from '../src/config/database';
-import { BookPurpose, TransactionState } from './models';
-import { BOOK_PURPOSE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from './constants';
+import { BookPurpose, TransactionState } from '../src/models';
+import { BOOK_PURPOSE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../src/constants';
 
 async function seedBookPurposes(): Promise<void> {
   for (const purpose of Object.values(BOOK_PURPOSE)) {
@@ -15,7 +15,6 @@ async function seedBookPurposes(): Promise<void> {
 
 async function seedTransactionState(): Promise<void> {
   for (const transactionState of Object.values(TRANSACTION_STATE)) {
-    if (!transactionState.id) continue;
     await TransactionState.upsert({
       id: transactionState.id,
       code: transactionState.code,

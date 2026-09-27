@@ -3,7 +3,7 @@ import 'reflect-metadata';
 import { container } from '../di/container';
 import { UnitOfWork } from '../common/UnitOfWork';
 import { BookRepository, BookPostingRepository, JournalTransactionRepository } from '../repositories';
-import { DepositFlow, WithdrawFlow, StakeFlow } from '../logics';
+import { DepositFlow, WithdrawFlow, StakeFlow } from '../domain';
 
 /**
  * Kiểm tra "autoinject" hoạt động thật (không cần kết nối DB):

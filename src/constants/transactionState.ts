@@ -1,5 +1,5 @@
 export const TRANSACTION_STATE = {
-  NOT_APPLICABLE: {
+    NOT_APPLICABLE: {
     id: null,
     code: null,
     name: 'Not Applicable',

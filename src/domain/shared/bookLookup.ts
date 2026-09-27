@@ -1,7 +1,7 @@
 import { Transaction } from 'sequelize';
 
-import { Book, BookPosting } from '../models';
-import { NotFoundError } from '../common/errors';
+import { Book, BookPosting } from '../../models';
+import { NotFoundError } from '../../common/errors';
 
 /**
  * Tìm book đã tham gia vào 1 journal transaction, theo bookPurposeId, thông
