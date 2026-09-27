@@ -42,10 +42,6 @@ export class JournalTransaction extends Model {
   })
   declare uuidToken: string;
 
-  // ============================================================
-  // Transaction information
-  // ============================================================
-
   @Column({
     field: 'transaction_type_id',
     type: DataType.INTEGER,
@@ -74,10 +70,6 @@ export class JournalTransaction extends Model {
   })
   declare requestId: number | null;
 
-  // ============================================================
-  // External blockchain transaction
-  // ============================================================
-
   @Index('idx_journal_transaction_transaction_hash')
   @Column({
     field: 'transaction_hash',
@@ -85,10 +77,6 @@ export class JournalTransaction extends Model {
     allowNull: true,
   })
   declare transactionHash: string | null;
-
-  // ============================================================
-  // Source / Idempotency
-  // ============================================================
 
   @Column({
     field: 'source_content',
@@ -105,10 +93,6 @@ export class JournalTransaction extends Model {
   })
   declare idempotencyToken: string | null;
 
-  // ============================================================
-  // State
-  // ============================================================
-
   @Column({
     field: 'journal_transaction_state',
     type: DataType.ENUM(JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED),
@@ -117,35 +101,12 @@ export class JournalTransaction extends Model {
   })
   declare journalTransactionState: JournalTransactionStateValue;
 
-  /**
-   * State chi tiết HIỆN TẠI của vòng đời nghiệp vụ (AUTHORIZING / AUTHORIZED /
-   * SENT / CONFIRMING / CONFIRMED — xem TRANSACTION_STATE), khác với
-   * `journalTransactionState` ở trên vốn chỉ có 3 giá trị thô
-   * (ACTIVE/COMPLETED/CANCELLED_OR_EXPIRED).
-   *
-   * Đây là cột "cache" — luôn phản ánh giá trị MỚI NHẤT, để
-   * updateJournalTransaction() đọc được ngay trong cùng 1 lần
-   * SELECT ... FOR UPDATE (không cần thêm round-trip dò ngược
-   * journal_transaction_history). Lịch sử đầy đủ nằm ở cột cùng tên bên
-   * JournalTransactionHistory.
-   */
   @ForeignKey(() => TransactionState)
-  @Column({
-    field: 'transaction_state_id',
-    type: DataType.INTEGER,
-    allowNull: true,
-  })
+  @Column({ field: 'transaction_state_id', type: DataType.INTEGER, allowNull: true })
   declare transactionStateId: number | null;
 
-  @BelongsTo(() => TransactionState, {
-    foreignKey: 'transactionStateId',
-    as: 'transactionState',
-  })
-  declare transactionState: TransactionState;
-
-  // ============================================================
-  // Business date
-  // ============================================================
+  @BelongsTo(() => TransactionState, { foreignKey: 'transactionStateId', as: 'transactionState' })
+  declare transactionState: TransactionState | null;
 
   @Column({
     field: 'business_post_date_time',
@@ -153,10 +114,6 @@ export class JournalTransaction extends Model {
     allowNull: true,
   })
   declare businessPostDateTime: Date | null;
-
-  // ============================================================
-  // Audit
-  // ============================================================
 
   @Column({
     field: 'created_date',

@@ -1,4 +1,5 @@
 export const TRANSACTION_STATE = {
+  // please dont remove, we need to this record. this record support the book purpose is external blockchian.
     NOT_APPLICABLE: {
     id: null,
     code: null,

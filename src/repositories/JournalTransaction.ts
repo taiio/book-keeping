@@ -3,12 +3,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { JournalTransaction, JournalTransactionHistory } from '../models';
 import { NotFoundError } from '../common/errors';
-import type {
-  GetOrCreateJournalTransactionParams,
-  GetOrCreateJournalTransactionResult,
-  UpdateJournalTransactionParams,
-  UpdateJournalTransactionResult,
-} from './interfaces';
+
 import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK, HISTORY_EVENT_TYPE } from '../constants';
 
 /**
@@ -22,6 +17,10 @@ const TERMINAL_STATES: ReadonlySet<string> = new Set([JOURNAL_TRANSACTION_STATE.
 @singleton()
 @autoInjectable()
 export class JournalTransactionRepository {
+  async findByTransactionHash(transactionHash: string, transaction: Transaction): Promise<JournalTransaction | null> {
+    return JournalTransaction.findOne({ where: { transactionHash }, transaction });
+  }
+
   /**
    * Idempotent theo `idempotencyToken`.
    *
@@ -41,9 +40,9 @@ export class JournalTransactionRepository {
    * DB — `idempotencyToken` trên JournalTransaction đã có (`unique: true`).
    */
   async getOrCreateJournalTransaction(
-    params: GetOrCreateJournalTransactionParams,
+    params: any,
     transaction: Transaction,
-  ): Promise<GetOrCreateJournalTransactionResult> {
+  ): Promise<any> {
     // idempotencyToken là nullable ở DB (cho phép nhiều NULL cùng lúc theo
     // chuẩn Postgres unique index). Nếu caller không truyền, KHÔNG được
     // findOrCreate theo where: { idempotencyToken: null } vì như vậy sẽ
@@ -144,7 +143,7 @@ export class JournalTransactionRepository {
    *     bucket đã lỡ ghi nhận trước đó — repository này không biết gì về
    *     Book/posting nên không tự hoàn tiền được.
    */
-  async updateJournalTransaction(params: UpdateJournalTransactionParams, transaction: Transaction): Promise<UpdateJournalTransactionResult> {
+  async updateJournalTransaction(params: any, transaction: Transaction): Promise<any> {
     const journalTransaction = await JournalTransaction.findByPk(params.journalTransactionId, { transaction, lock: transaction.LOCK.UPDATE });
 
     if (!journalTransaction) {
