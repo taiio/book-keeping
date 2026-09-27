@@ -50,15 +50,15 @@ export class Book extends Model {
   @Column({
     field: 'transaction_state_id',
     type: DataType.INTEGER,
-    allowNull: false,
+    allowNull: true,
   })
-  declare transactionStateId: number;
+  declare transactionStateId: number | null;
 
   @BelongsTo(() => TransactionState, {
     foreignKey: 'transactionStateId',
     as: 'transactionState',
   })
-  declare transactionState: TransactionState;
+  declare transactionState: TransactionState | null;
 
   @Column({
     field: 'client_id',

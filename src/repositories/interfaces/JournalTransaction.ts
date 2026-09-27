@@ -23,25 +23,46 @@ export interface GetOrCreateJournalTransactionResult {
   created: boolean;
 }
 
+export type UpdateJournalTransactionOutcome = 'APPLIED' | 'REPLAYED_NOOP' | 'REJECTED_INVALID_TRANSITION';
+
+export interface UpdateJournalTransactionResult {
+  journalTransaction: import('../../models').JournalTransaction;
+  outcome: UpdateJournalTransactionOutcome;
+}
+
 export interface UpdateJournalTransactionParams {
   journalTransactionId: number;
-  /** journal_transaction_state ghi vào JournalTransactionHistory (vd ACTIVE/COMPLETED). */
+  /** journal_transaction_state ghi vào JournalTransactionHistory (vd ACTIVE/COMPLETED) khi advance HỢP LỆ. */
   journalTransactionState: string;
   historyTransactionTypeId: number;
   transactionHash?: string | null;
   updatedBy?: number | null;
-  /**
-   * State chi tiết ĐÍCH của lần advance này (vd TRANSACTION_STATE.SENT.id).
-   * Khi có giá trị, updateJournalTransaction sẽ:
-   *   1. So sánh rank với transactionStateId hiện tại của journal (guard monotonic) —
-   *      nếu target <= hiện tại thì coi là replay/late event, trả về nguyên trạng.
-   *   2. Cập nhật cột cache journal_transaction.transaction_state_id.
-   *   3. Ghi transaction_state_id này vào dòng JournalTransactionHistory tương ứng
-   *      (snapshot tại đúng thời điểm sự kiện, không phải cache).
-   */
+  /** State chi tiết ĐÍCH của lần advance này (vd TRANSACTION_STATE.SENT.id). */
   targetTransactionStateId?: number | null;
-  /** Đánh dấu journal_transaction_state = COMPLETED khi đạt state cuối cùng. */
+  /**
+   * Toàn bộ chuỗi state HỢP LỆ cho flow/kind cụ thể đang gọi — vd withdraw
+   * "external": [AUTHORIZING, AUTHORIZED, SENT, CONFIRMING, CONFIRMED].id;
+   * withdraw "internal": [AUTHORIZING, AUTHORIZED, CONFIRMED].id (bỏ qua
+   * SENT/CONFIRMING vì không có tx blockchain thật).
+   *
+   * Khi có truyền (cùng với targetTransactionStateId): hàm định vị
+   * currentIndex = sequence.indexOf(journal.transactionStateId hiện tại) và
+   * targetIndex = sequence.indexOf(targetTransactionStateId), rồi:
+   *   - targetIndex !== -1 && targetIndex <= currentIndex -> REPLAYED_NOOP
+   *     (đã áp dụng rồi hoặc đi lùi -> coi là duplicate/late event, bỏ qua).
+   *   - targetIndex === currentIndex + 1 -> APPLIED (đúng bước kế tiếp).
+   *   - Mọi trường hợp khác (bỏ bước, target không thuộc chuỗi...) ->
+   *     REJECTED_INVALID_TRANSITION: journal bị chuyển thẳng sang
+   *     CANCELLED_OR_EXPIRED NGAY LẬP TỨC, bất kể completeJournal/cancelJournal
+   *     truyền là gì.
+   *
+   * Không truyền -> chỉ áp dụng guard rank đơn giản qua TRANSACTION_STATE_RANK
+   * (target <= hiện tại thì no-op) như trước, KHÔNG có kiểm tra "đúng bước kế
+   * tiếp" — dùng cho các flow không cần FSM chặt (Deposit, Stake).
+   */
+  expectedStateSequence?: number[];
+  /** Đánh dấu journal_transaction_state = COMPLETED khi đạt state cuối cùng (chỉ có hiệu lực nếu kết quả là APPLIED). */
   completeJournal?: boolean;
-  /** Đánh dấu journal_transaction_state = CANCELLED_OR_EXPIRED. */
+  /** Đánh dấu journal_transaction_state = CANCELLED_OR_EXPIRED (chỉ có hiệu lực nếu kết quả là APPLIED). */
   cancelJournal?: boolean;
 }

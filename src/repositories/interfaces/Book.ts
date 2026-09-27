@@ -10,7 +10,7 @@ export interface GetOrCreateBookParams {
    */
   name: string;
   bookPurposeId: number;
-  transactionStateId: number;
+  transactionStateId: number | null;
   clientId: number;
   accountId: number;
   assetId: number;

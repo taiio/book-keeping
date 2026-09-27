@@ -3,8 +3,13 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { JournalTransaction, JournalTransactionHistory } from '../models';
 import { NotFoundError } from '../common/errors';
-import type { GetOrCreateJournalTransactionParams, GetOrCreateJournalTransactionResult, UpdateJournalTransactionParams } from './interfaces';
-import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK } from '../constants';
+import type {
+  GetOrCreateJournalTransactionParams,
+  GetOrCreateJournalTransactionResult,
+  UpdateJournalTransactionParams,
+  UpdateJournalTransactionResult,
+} from './interfaces';
+import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK, HISTORY_EVENT_TYPE } from '../constants';
 
 /**
  * Các state coi là "kết thúc" (terminal). Một khi journal đã vào 1 trong 2
@@ -127,14 +132,19 @@ export class JournalTransactionRepository {
    * cùng 1 journal luôn serialize qua nhau (không có 2 transaction cùng
    * đọc "state hiện tại" rồi cùng ghi đè).
    *
-   * Monotonic guard: 1 khi journal đã ở state kết thúc (COMPLETED hoặc
-   * CANCELLED_OR_EXPIRED) thì coi MỌI lệnh update tiếp theo là replay/late
-   * event và trả về nguyên trạng, không ghi thêm history, không đổi state.
-   * Đây là chỗ code cũ có khai báo currentStateId nhưng không hề dùng nó để
-   * chặn gì cả — một duplicate "complete" event gửi lại vẫn lọt qua và ghi
-   * thêm 1 dòng history/COMPLETED thứ hai.
+   * Trả về `outcome` thay vì chỉ trả JournalTransaction để caller (Flow)
+   * phân biệt được 3 trường hợp và xử lý đúng:
+   *   - APPLIED: state vừa được tiến đúng 1 bước hợp lệ, đã ghi history.
+   *   - REPLAYED_NOOP: duplicate/late event (target <= state hiện tại, hoặc
+   *     journal đã ở state kết thúc) — KHÔNG có gì thay đổi, an toàn bỏ qua.
+   *   - REJECTED_INVALID_TRANSITION: (chỉ xảy ra khi có truyền
+   *     `expectedStateSequence`) target bỏ bước / không thuộc chuỗi hợp lệ —
+   *     journal đã bị chuyển sang CANCELLED_OR_EXPIRED NGAY TRONG LẦN GỌI
+   *     NÀY. Caller (vd WithdrawFlow) cần tự hoàn tiền lại cho client ở các
+   *     bucket đã lỡ ghi nhận trước đó — repository này không biết gì về
+   *     Book/posting nên không tự hoàn tiền được.
    */
-  async updateJournalTransaction(params: UpdateJournalTransactionParams, transaction: Transaction): Promise<JournalTransaction> {
+  async updateJournalTransaction(params: UpdateJournalTransactionParams, transaction: Transaction): Promise<UpdateJournalTransactionResult> {
     const journalTransaction = await JournalTransaction.findByPk(params.journalTransactionId, { transaction, lock: transaction.LOCK.UPDATE });
 
     if (!journalTransaction) {
@@ -142,22 +152,60 @@ export class JournalTransactionRepository {
     }
 
     if (TERMINAL_STATES.has(journalTransaction.journalTransactionState)) {
-      return journalTransaction;
+      return { journalTransaction, outcome: 'REPLAYED_NOOP' };
     }
 
-    // Guard monotonic ở mức state CHI TIẾT (AUTHORIZING/AUTHORIZED/SENT/...).
-    // Mạnh hơn TERMINAL_STATES ở trên: chặn được cả trường hợp 1 event ĐẾN
-    // TRỄ/SAI THỨ TỰ ở GIỮA vòng đời (chưa hề COMPLETED/CANCELLED) — ví dụ
-    // journal đã ở CONFIRMING (rank 3), nhưng 1 event SENT (rank 2) bị
-    // queue redeliver muộn lại đến sau — event này phải bị coi là replay và
-    // bỏ qua, KHÔNG được phép ghi thêm history hay (tệ hơn) làm lùi state.
-    if (
+    const currentStateId = journalTransaction.transactionStateId;
+
+    if (params.expectedStateSequence && params.targetTransactionStateId != null) {
+      // FSM CHẶT: target BẮT BUỘC phải đúng là bước kế tiếp trong chuỗi
+      // `expectedStateSequence` — không được bỏ bước, không được lộn xộn.
+      const sequence = params.expectedStateSequence;
+      const currentIndex = currentStateId != null ? sequence.indexOf(currentStateId) : -1;
+      const targetIndex = sequence.indexOf(params.targetTransactionStateId);
+
+      if (targetIndex !== -1 && targetIndex <= currentIndex) {
+        // Đã áp dụng rồi (duplicate) hoặc target là 1 bước cũ hơn hiện tại
+        // (event đến trễ) -> replay, bỏ qua an toàn.
+        return { journalTransaction, outcome: 'REPLAYED_NOOP' };
+      }
+
+      if (targetIndex !== currentIndex + 1) {
+        // SAI THỨ TỰ / BỎ BƯỚC / target không thuộc chuỗi hợp lệ của flow
+        // này -> REJECT TOÀN BỘ journal ngay lập tức, bất kể
+        // completeJournal/cancelJournal truyền vào là gì.
+        journalTransaction.journalTransactionState = JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED;
+        journalTransaction.updatedDate = new Date();
+        journalTransaction.updatedBy = params.updatedBy ?? null;
+
+        await journalTransaction.save({ transaction });
+
+        await JournalTransactionHistory.create(
+          {
+            historyTransactionTypeId: HISTORY_EVENT_TYPE.REJECTED_INVALID_TRANSITION,
+            journalTransactionId: journalTransaction.id,
+            transactionHash: journalTransaction.transactionHash,
+            journalTransactionState: JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED,
+            // Giữ nguyên state CHI TIẾT hợp lệ CUỐI CÙNG (không nhảy sang
+            // target sai) — đây chính là bucket mà caller cần dùng để tính
+            // hoàn tiền lại cho client.
+            transactionStateId: currentStateId,
+            createdBy: params.updatedBy ?? null,
+          },
+          { transaction },
+        );
+
+        return { journalTransaction, outcome: 'REJECTED_INVALID_TRANSITION' };
+      }
+      // targetIndex === currentIndex + 1 -> đúng bước kế tiếp, rơi xuống nhánh APPLIED bên dưới.
+    } else if (
       params.targetTransactionStateId != null &&
-      journalTransaction.transactionStateId != null &&
-      (TRANSACTION_STATE_RANK[params.targetTransactionStateId] ?? -Infinity) <=
-        (TRANSACTION_STATE_RANK[journalTransaction.transactionStateId] ?? -Infinity)
+      currentStateId != null &&
+      (TRANSACTION_STATE_RANK[params.targetTransactionStateId] ?? -Infinity) <= (TRANSACTION_STATE_RANK[currentStateId] ?? -Infinity)
     ) {
-      return journalTransaction;
+      // Không có expectedStateSequence (Deposit/Stake) -> chỉ áp dụng guard
+      // rank đơn giản: target <= hiện tại thì coi là replay, bỏ qua.
+      return { journalTransaction, outcome: 'REPLAYED_NOOP' };
     }
 
     journalTransaction.transactionHash = params.transactionHash ?? journalTransaction.transactionHash ?? null;
@@ -183,15 +231,12 @@ export class JournalTransactionRepository {
         journalTransactionId: journalTransaction.id,
         transactionHash: journalTransaction.transactionHash,
         journalTransactionState: params.journalTransactionState,
-        // Snapshot state chi tiết TẠI THỜI ĐIỂM sự kiện này — ưu tiên target
-        // của lần advance này; nếu flow không truyền (vd flow chỉ dùng
-        // journalTransactionState thô) thì rơi về giá trị hiện có trên journal.
         transactionStateId: params.targetTransactionStateId ?? journalTransaction.transactionStateId,
         createdBy: params.updatedBy ?? null,
       },
       { transaction },
     );
 
-    return journalTransaction;
+    return { journalTransaction, outcome: 'APPLIED' };
   }
 }

@@ -15,6 +15,7 @@ async function seedBookPurposes(): Promise<void> {
 
 async function seedTransactionState(): Promise<void> {
   for (const transactionState of Object.values(TRANSACTION_STATE)) {
+    if (!transactionState.id) continue;
     await TransactionState.upsert({
       id: transactionState.id,
       code: transactionState.code,

@@ -1,4 +1,11 @@
 export const TRANSACTION_STATE = {
+  NOT_APPLICABLE: {
+    id: null,
+    code: null,
+    name: 'Not Applicable',
+    description: 'No transaction state applies to this record.',
+  },
+
   AUTHORIZING: {
     id: 1,
     code: 'AUTHORIZING',

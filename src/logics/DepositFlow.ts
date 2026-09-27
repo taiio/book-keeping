@@ -7,7 +7,15 @@ import { BOOK_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE, HISTORY_EVENT_TYPE, 
 import { BaseTransactionRequest } from './types';
 import { buildPostingIdempotencyToken } from './idempotency';
 
-export type DepositRequest = BaseTransactionRequest;
+export interface DepositRequest extends BaseTransactionRequest {
+  /**
+   * Deposit: tài khoản đích nhận tiền là `book.accountId`.
+   * Nếu flow cần thêm account khác ở tương lai (ví dụ deposit từ external
+   * account to user account), nên khai báo rõ `fromAccountId` / `toAccountId` ở
+   * đây thay vì lạm dụng chung `accountId`.
+   */
+  toAccountId?: number | null;
+}
 
 /**
  * Deposit lifecycle:
@@ -15,7 +23,7 @@ export type DepositRequest = BaseTransactionRequest;
  *
  * Books:
  *   1. EXTERNAL_ACCOUNT     (mở sẵn với số dư = amount, đại diện tiền đã vào ví)
- *   2. CLIENT_ASSET_ACCOUNT (mở với số dư 0, chỉ được cộng khi confirm)
+ *   2. CUSTODY_ASSET_ACCOUNT (mở với số dư 0, chỉ được cộng khi confirm)
  *
  * CONFIRMING: chưa nhả tiền cho client.
  * CONFIRMED : EXTERNAL -amount / CLIENT +amount.
@@ -88,7 +96,7 @@ export class DepositFlow {
         {
           name: BOOK_PURPOSE.EXTERNAL_ACCOUNT.code,
           bookPurposeId: BOOK_PURPOSE.EXTERNAL_ACCOUNT.id,
-          transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
+          transactionStateId: TRANSACTION_STATE.NOT_APPLICABLE.id,
           clientId: request.clientId,
           accountId: request.accountId,
           assetId: request.assetId,
@@ -103,8 +111,8 @@ export class DepositFlow {
 
       const { book: book2 } = await this.bookRepository.getOrCreateBook(
         {
-          name: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.code,
-          bookPurposeId: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.id,
+          name: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.code,
+          bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
           transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
           clientId: request.clientId,
           accountId: request.accountId,
@@ -124,7 +132,7 @@ export class DepositFlow {
       const externalToken = buildPostingIdempotencyToken({
         idempotencyToken: request.idempotencyToken,
         transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
-        transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
+        transactionStateId: TRANSACTION_STATE.NOT_APPLICABLE.id,
         bookPostingPurposeId: BOOK_POSTING_PURPOSE.AMOUNT,
         legIndex: 1,
       });
@@ -193,8 +201,8 @@ export class DepositFlow {
 
       const { book: book1 } = await this.bookRepository.getOrCreateBook(
         {
-          name: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.code,
-          bookPurposeId: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.id,
+          name: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.code,
+          bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
           transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
           clientId: request.clientId,
           accountId: request.accountId,
@@ -210,8 +218,8 @@ export class DepositFlow {
 
       const { book: book2 } = await this.bookRepository.getOrCreateBook(
         {
-          name: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.code,
-          bookPurposeId: BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.id,
+          name: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.code,
+          bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
           transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
           clientId: request.clientId,
           accountId: request.accountId,

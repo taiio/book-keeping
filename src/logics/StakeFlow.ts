@@ -1,14 +1,21 @@
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { Book, BookPosting, JournalTransaction } from '../models';
+import { JournalTransaction } from '../models';
 import { UnitOfWork } from '../common/UnitOfWork';
 import { BookRepository, BookPostingRepository, JournalTransactionRepository } from '../repositories';
 import { BOOK_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, BOOK_POSTING_PURPOSE } from '../constants';
-import { NotFoundError } from '../common/errors';
 import { BaseTransactionRequest } from './types';
 import { buildPostingIdempotencyToken } from './idempotency';
+import { findBookByJournalAndPurpose } from './bookLookup';
 
-export type StakeRequest = BaseTransactionRequest;
+export interface StakeRequest extends BaseTransactionRequest {
+  /**
+   * Stake không chỉ là "trừ từ client account" mà còn cần xác định rõ nơi tài
+   * sản được khóa. Trong design mới, `accountId` là nguồn tài sản và `custodyAccountId`
+   * là đối tượng nhận khóa (nếu cần tách riêng).
+   */
+  custodyAccountId?: number | null;
+}
 
 /**
  * Stake lifecycle:
@@ -142,6 +149,8 @@ export class StakeFlow {
 
       // Đánh dấu đã khoá tài sản xong (audit trail — journal_transaction_state
       // vẫn ở ACTIVE, chưa COMPLETED, vì vòng đời còn tiếp tục tới unstake).
+      // Stake không dùng expectedStateSequence (FSM lỏng, chỉ 2 bước) nên
+      // outcome ở đây luôn là 'APPLIED' — không cần xử lý REJECTED.
       await this.journalTransactionRepository.updateJournalTransaction(
         {
           journalTransactionId: journalTransaction.id,
@@ -175,7 +184,7 @@ export class StakeFlow {
     businessPostDateTime: Date = new Date(),
   ): Promise<JournalTransaction> {
     return this.unitOfWork.execute(async (transaction) => {
-      const journalTransaction = await this.journalTransactionRepository.updateJournalTransaction(
+      const { journalTransaction } = await this.journalTransactionRepository.updateJournalTransaction(
         {
           journalTransactionId,
           journalTransactionState: JOURNAL_TRANSACTION_STATE.COMPLETED,
@@ -198,8 +207,8 @@ export class StakeFlow {
       // các BookPosting gắn với journalTransactionId của nó, và mỗi
       // BookPosting trỏ thẳng tới Book qua bookId (khoá ngoại thật, không
       // phải chuỗi tên suy diễn).
-      const custodyBook = await this.findBookByStakePosting(journalTransactionId, BOOK_PURPOSE.CUSTODY_CONTROL_ACCOUNT.id, transaction);
-      const clientBookResolved = await this.findBookByStakePosting(journalTransactionId, BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.id, transaction);
+      const custodyBook = await findBookByJournalAndPurpose(journalTransactionId, BOOK_PURPOSE.CUSTODY_CONTROL_ACCOUNT.id, transaction);
+      const clientBookResolved = await findBookByJournalAndPurpose(journalTransactionId, BOOK_PURPOSE.CLIENT_ASSET_ACCOUNT.id, transaction);
 
       await this.bookRepository.lockBooksInOrder([clientBookResolved.id, custodyBook.id], transaction);
 
@@ -247,27 +256,5 @@ export class StakeFlow {
 
       return journalTransaction;
     });
-  }
-
-  /**
-   * Lấy đúng book đã tham gia vào lần stake này (theo journalTransactionId +
-   * bookPurposeId), thông qua BookPosting — thay vì suy đoán qua tên chuỗi.
-   */
-  private async findBookByStakePosting(
-    journalTransactionId: number,
-    bookPurposeId: number,
-    transaction: import('sequelize').Transaction,
-  ): Promise<Book> {
-    const posting = await BookPosting.findOne({
-      where: { journalTransactionId },
-      include: [{ association: 'book', required: true, where: { bookPurposeId } }],
-      transaction,
-    });
-
-    if (!posting || !posting.book) {
-      throw new NotFoundError('Book (stake leg)', `${journalTransactionId}:${bookPurposeId}`);
-    }
-
-    return posting.book;
   }
 }

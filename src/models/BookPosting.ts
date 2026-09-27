@@ -100,6 +100,13 @@ export class BookPosting extends Model {
   declare amount: string;
 
   @Column({
+    field: 'book_posting_purpose_id',
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  declare bookPostingPurposeId: number;
+
+  @Column({
     field: 'asset_type_id',
     type: DataType.INTEGER,
     allowNull: true,
@@ -144,13 +151,6 @@ export class BookPosting extends Model {
   // ============================================================
   // Purpose
   // ============================================================
-
-  @Column({
-    field: 'book_posting_purpose_id',
-    type: DataType.INTEGER,
-    allowNull: false,
-  })
-  declare bookPostingPurposeId: number;
 
   // ============================================================
   // Audit
