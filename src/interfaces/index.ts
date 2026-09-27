@@ -4,12 +4,12 @@ export * from './FeeItem';
 export * from './TransactionType';
 export * from './TransactionState';
 
-export * from './TransactionCommandBase';
-export * from './WithdrawCommand';
-export * from './StakeCommand';
-export * from './UnstakeCommand';
-export * from './RestakeCommand';
-export * from './TransactionCommand';
+export * from './TransactionBase';
+export * from './Withdraw';
+export * from './Stake';
+export * from './Unstake';
+export * from './Restake';
+export * from './Transaction';
 
 export * from './TransactionEntityBase';
 export * from './TransactionEntity';

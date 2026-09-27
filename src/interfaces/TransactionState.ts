@@ -4,5 +4,4 @@ export type TransactionState =
   | 'SUBMITTING'
   | 'SENT'
   | 'CONFIRMED'
-  | 'FAILED'
-  | 'REVERTED';
+  | 'FAILED';

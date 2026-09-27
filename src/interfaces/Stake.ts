@@ -1,8 +1,8 @@
 import { AccountItem } from './AccountItem';
 import { FeeItem } from './FeeItem';
-import { TransactionCommandBase } from './TransactionCommandBase';
+import { TransactionBase } from './TransactionBase';
 
-export interface StakeCommand extends TransactionCommandBase {
+export interface Stake extends TransactionBase {
   type: 'STAKE';
 
   sender: AccountItem;

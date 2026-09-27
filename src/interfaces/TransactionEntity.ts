@@ -1,11 +1,11 @@
 import { TransactionEntityBase } from './TransactionEntityBase';
-import { WithdrawCommand } from './WithdrawCommand';
-import { StakeCommand } from './StakeCommand';
-import { UnstakeCommand } from './UnstakeCommand';
-import { RestakeCommand } from './RestakeCommand';
+import { Withdraw } from './Withdraw';
+import { Stake } from './Stake';
+import { Unstake } from './Unstake';
+import { Restake } from './Restake';
 
 export type TransactionEntity =
-  | (WithdrawCommand & TransactionEntityBase)
-  | (StakeCommand & TransactionEntityBase)
-  | (UnstakeCommand & TransactionEntityBase)
-  | (RestakeCommand & TransactionEntityBase);
+  | (Withdraw & TransactionEntityBase)
+  | (Stake & TransactionEntityBase)
+  | (Unstake & TransactionEntityBase)
+  | (Restake & TransactionEntityBase);

@@ -1,4 +1,4 @@
 export type BlockchainTransactionStatus =
+  | 'CONFIRMING'
   | 'CONFIRMED'
-  | 'FAILED'
-  | 'REVERTED';
+  | 'FAILED';

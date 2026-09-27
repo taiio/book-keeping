@@ -1,8 +1,8 @@
 import { AccountItem } from './AccountItem';
 import { FeeItem } from './FeeItem';
-import { TransactionCommandBase } from './TransactionCommandBase';
+import { TransactionBase } from './TransactionBase';
 
-export interface WithdrawCommand extends TransactionCommandBase {
+export interface Withdraw extends TransactionBase {
   type: 'WITHDRAW';
 
   sender: AccountItem[];
