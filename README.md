@@ -1,3 +1,5 @@
+> Bút toán chi tiết từng state (Reserved/Authorized/Sent/Confirming, Fee Revenue): xem `src/handler/ledgerMovements.md`.
+
 # Bookkeeping Service
 
 ## Architecture Overview

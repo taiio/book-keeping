@@ -1,27 +1,32 @@
 import { Transaction as SequelizeTransaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
+import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE, TRANSACTION_STATE_CODE_BY_ID } from '../constants';
 import {
   collectDebitAndFeeMovements,
   custodyBookParams,
   depositMovementKey,
   externalBookParams,
+  feeConfirmingBookParams,
+  feeRevenueBookParams,
   movementKey,
   negateQuantity,
   postingTokens,
 } from '../helpers';
 import {
   ApplyMovementParams,
+  BucketMoveParams,
+  DepositMovementParams,
+  DepositPhase,
   GetOrCreateJournalTransactionParams,
   GetOrCreateJournalTransactionResult,
   LedgerOperationParams,
   LedgerPhase,
+  LegItem,
   LegMovement,
   MovementSpec,
   ReserveResult,
   ResolvedBooks,
-  SettleDepositParams,
   TransitionParams,
   UpdateJournalTransactionResult,
 } from '../interfaces';
@@ -43,6 +48,19 @@ import { JournalTransactionRepository } from '../repositories/JournalTransaction
  * Mỗi "movement" là 1 bút toán ĐÚP (double-entry): 2 dòng BookPosting đối nhau
  * (1 âm/1 dương, CÙNG |amount|) trên 2 Book khác nhau. Nếu có fee, fee LUÔN là
  * 1 movement ĐỘC LẬP với amount chính (asset có thể khác nhau).
+ *
+ * Mỗi bước của vòng đời có ĐÚNG 1 bút toán đúp (design doc):
+ *
+ *   WITHDRAW   AUTHORIZING  kiểm tra amount + fee (thiếu -> REJECTED, không post); đủ -> Available -> Reserved
+ *              AUTHORIZED   Reserved   -> Authorized
+ *              SENT         Authorized -> Sent
+ *              CONFIRMING   Sent       -> Confirming
+ *              CONFIRMED    Confirming -> External (amount);  Confirming -> Fee Confirming -> Fee Revenue (fee)
+ *              FAILED       bucket hiện tại (Authorized/Sent/Confirming) -> Available
+ *
+ *   DEPOSIT    CONFIRMING   External   -> Confirming
+ *              CONFIRMED    Confirming -> Available
+ *              FAILED       Confirming -> External
  *
  * Ai ghi history nào:
  *   - openJournal()     -> journal_transaction_history (CREATED)
@@ -80,31 +98,35 @@ export class LedgerPipeline {
   }
 
   /**
-   * Chuyển state journal (khoá row FOR UPDATE, ghi history), rồi áp hiệu ứng kế toán
+   * Chuyển state journal (khoá row FOR UPDATE, ghi history), rồi áp bút toán của bước đó
    * theo outcome:
-   *   - APPLIED       -> chạy `onApplied` (SETTLE / RELEASE) nếu có.
+   *   - APPLIED       -> chạy `onApplied` (ADVANCE / SETTLE / RELEASE) nếu có.
    *   - REPLAYED_NOOP -> KHÔNG làm gì (đã post ở lần trước) — chống post trùng.
-   *   - REJECTED_INVALID_TRANSITION -> KHÔNG làm gì. Journal đã bị CANCELLED nhưng tiền reserve
-   *     được giữ nguyên ở bucket AUTHORIZING: tự hoàn ở đây sẽ SAI nếu giao dịch thật ra đã
-   *     confirm on-chain (double-spend). Việc xử lý các journal này cần quyết định nghiệp vụ.
+   *   - REJECTED_INVALID_TRANSITION -> KHÔNG làm gì. Journal đã bị CANCELLED nhưng tiền được giữ
+   *     nguyên ở bucket hiện tại: tự hoàn ở đây sẽ SAI nếu giao dịch thật ra đã confirm on-chain
+   *     (double-spend). Việc xử lý các journal này cần quyết định nghiệp vụ.
    *
    * Post accounting SAU khi state được chốt, để 1 transition bị FSM từ chối không bao giờ
-   * dẫn tới post nửa chừng.
+   * dẫn tới post nửa chừng. Bucket nguồn luôn là state TRƯỚC khi chuyển (previousTransactionStateId).
    */
   async transition(params: TransitionParams, tx: SequelizeTransaction): Promise<UpdateJournalTransactionResult> {
     const { legs, onApplied, ...update } = params;
 
     const result = await this.journalTransactionRepository.updateJournalTransaction(update, tx);
 
-    if (result.outcome === 'APPLIED' && legs && onApplied) {
-      const operation: LedgerOperationParams = {
+    if (result.outcome === 'APPLIED' && legs && onApplied && result.previousTransactionStateId != null) {
+      const operation: BucketMoveParams = {
         journalTransactionId: result.journalTransaction.id,
         uuidToken: result.journalTransaction.uuidToken,
         legs,
         createdBy: update.updatedBy,
+        fromStateId: result.previousTransactionStateId,
+        toStateId: result.journalTransaction.transactionStateId ?? undefined,
       };
 
-      if (onApplied === 'SETTLE') {
+      if (onApplied === 'ADVANCE') {
+        await this.advance(operation, tx);
+      } else if (onApplied === 'SETTLE') {
         await this.settle(operation, tx);
       } else {
         await this.release(operation, tx);
@@ -178,14 +200,16 @@ export class LedgerPipeline {
     await post(toBook, quantity, tokens.credit);
   }
 
-  /** Resolve + khoá + áp TẤT CẢ movement của 1 giai đoạn (RSV/RVT/SET) trong cùng 1 lượt. */
+  /** Resolve + khoá + áp TẤT CẢ movement của 1 giai đoạn trong cùng 1 lượt (khoá theo thứ tự id, chống deadlock). */
   private async applyAll(
     specs: MovementSpec[],
-    resolved: Map<string, ResolvedBooks>,
     operation: Pick<LedgerOperationParams, 'journalTransactionId' | 'uuidToken' | 'createdBy'>,
     phase: LedgerPhase,
     tx: SequelizeTransaction,
+    preResolved?: Map<string, ResolvedBooks>,
   ): Promise<void> {
+    const resolved = preResolved ?? (await this.resolveAndLockAll(specs, tx));
+
     for (const spec of specs) {
       const { fromBook, toBook } = resolved.get(spec.key)!;
 
@@ -204,12 +228,17 @@ export class LedgerPipeline {
     }
   }
 
+  // --------------------------------------------------------------------
+  // WITHDRAW / STAKE / UNSTAKE / RESTAKE
+  // --------------------------------------------------------------------
+
   /**
-   * AUTHORIZING: CUSTODY@CONFIRMED -> CUSTODY@AUTHORIZING cho từng debitItem VÀ fee.
+   * AUTHORIZING: kiểm tra Available đủ cho amount + fee, đủ thì post Available -> Reserved.
+   * Thiếu -> KHÔNG post gì (design: INSUFFICIENT -> REJECTED, NO POST), toàn bộ request bị từ chối atomically.
    *
-   * Khoá + kiểm tra đủ số dư cho TẤT CẢ các vế TRƯỚC, rồi mới post — tránh post nửa chừng.
-   * Nếu amount và fee cùng asset (cùng 1 Book), số required được CỘNG DỒN theo từng book trước
-   * khi so sánh: kiểm tra riêng từng vế sẽ SAI khi 2 vế cộng lại vượt số dư.
+   * Khoá TẤT CẢ book liên quan trong 1 lượt rồi mới so sánh, và post trên chính các book đã khoá đó (không có
+   * khe hở giữa kiểm tra và post). Nếu amount và fee cùng asset (cùng 1 Book), số required được CỘNG DỒN theo
+   * từng book trước khi so sánh: kiểm tra riêng từng vế sẽ SAI khi 2 vế cộng lại vượt số dư.
    */
   async reserve(params: LedgerOperationParams, tx: SequelizeTransaction): Promise<ReserveResult> {
     const specs = this.buildSpecs(
@@ -242,81 +271,132 @@ export class LedgerPipeline {
     }
 
     if (shortfalls.length > 0) {
-      // KHÔNG post gì cả — toàn bộ request bị từ chối atomically.
       return { ok: false, shortfalls };
     }
 
-    await this.applyAll(specs, resolved, params, 'RSV', tx);
+    await this.applyAll(specs, params, `ADV:${TRANSACTION_STATE.AUTHORIZING.code}`, tx, resolved);
 
     return { ok: true };
   }
 
-  /** REJECTED hoặc FAILED: hoàn phần đã reserve từ bucket AUTHORIZING về lại bucket CONFIRMED (available). */
-  async release(params: LedgerOperationParams, tx: SequelizeTransaction): Promise<void> {
-    const specs = this.buildSpecs(
-      collectDebitAndFeeMovements(params.legs),
-      TRANSACTION_STATE.AUTHORIZING.id,
-      TRANSACTION_STATE.CONFIRMED.id,
-      params.createdBy,
-    );
+  /**
+   * AUTHORIZED / SENT / CONFIRMING: chuyển debit + fee từ bucket của state trước sang bucket của state mới
+   * (Reserved -> Authorized -> Sent -> Confirming). Phase của khoá idempotency gắn với state ĐÍCH.
+   * (Bước AUTHORIZING Available -> Reserved do `reserve()` làm vì phải kiểm tra số dư cùng lúc.)
+   */
+  async advance(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
+    if (params.toStateId == null) {
+      throw new Error('advance() requires toStateId.');
+    }
 
-    await this.applyAll(specs, await this.resolveAndLockAll(specs, tx), params, 'RVT', tx);
-  }
+    const specs = this.buildSpecs(collectDebitAndFeeMovements(params.legs), params.fromStateId, params.toStateId, params.createdBy);
+    const phase: LedgerPhase = `ADV:${TRANSACTION_STATE_CODE_BY_ID[params.toStateId]}`;
 
-  /** CONFIRMED: chốt phần đã reserve sang external (settle), đồng thời ghi nhận các vế credit (UNSTAKE) trả về custody. */
-  async settle(params: LedgerOperationParams, tx: SequelizeTransaction): Promise<void> {
-    const debitAndFeeSpecs: MovementSpec[] = collectDebitAndFeeMovements(params.legs).map((movement) => ({
-      ...movement,
-      fromLeg: custodyBookParams(movement.item, TRANSACTION_STATE.AUTHORIZING.id, params.createdBy),
-      toLeg: externalBookParams(movement.item, params.createdBy),
-    }));
-
-    const creditSpecs: MovementSpec[] = params.legs.creditItems.map((item, index) => ({
-      key: `C${index}`,
-      item,
-      purposeId: BOOK_POSTING_PURPOSE.AMOUNT,
-      fromLeg: externalBookParams(item, params.createdBy),
-      toLeg: custodyBookParams(item, TRANSACTION_STATE.CONFIRMED.id, params.createdBy),
-    }));
-
-    const allSpecs = [...debitAndFeeSpecs, ...creditSpecs];
-
-    await this.applyAll(allSpecs, await this.resolveAndLockAll(allSpecs, tx), params, 'SET', tx);
+    await this.applyAll(specs, params, phase, tx);
   }
 
   /**
-   * DEPOSIT: BLOCKCHIAN_EXTERNAL_ACCOUNT -> CUSTODY. Book custody đích đã biết trước (tìm qua
-   * BookRepository.findByDepositAddress ở caller), nên chỉ cần resolve/khoá thêm book external.
+   * REJECTED hoặc FAILED: hoàn phần đang giữ từ bucket hiện tại (Authorized / Sent / Confirming) về Available.
+   * Journal bị REJECTED ngay ở AUTHORIZING vì thiếu số dư thì chưa có bút toán nào để hoàn — caller không truyền `legs`.
    */
-  async settleDeposit(params: SettleDepositParams, tx: SequelizeTransaction): Promise<void> {
-    const { matchedCustodyBook } = params;
+  async release(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
+    const specs = this.buildSpecs(collectDebitAndFeeMovements(params.legs), params.fromStateId, TRANSACTION_STATE.CONFIRMED.id, params.createdBy);
 
-    const { book: externalBookUnlocked } = await this.bookRepository.getOrCreateBook(
-      externalBookParams(
-        {
-          assetId: matchedCustodyBook.assetId,
-          assetTicker: matchedCustodyBook.assetTicker,
-          quantity: params.quantity,
-          clientId: matchedCustodyBook.clientId,
-          accountId: matchedCustodyBook.accountId,
-          assetTypeId: matchedCustodyBook.assetTypeId,
-          walletTypeId: matchedCustodyBook.walletTypeId,
-        },
-        params.createdBy,
-      ),
+    await this.applyAll(specs, params, 'RVT', tx);
+  }
+
+  /**
+   * CONFIRMED (từ bucket Confirming):
+   *   - amount: Confirming -> External
+   *   - fee   : Confirming -> Fee Confirming -> Fee Revenue (2 bút toán liên tiếp để giữ đủ vết audit)
+   *   - credit (UNSTAKE): External -> Available
+   */
+  async settle(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
+    const fromStateId = params.fromStateId;
+    const specs: MovementSpec[] = [];
+
+    for (const movement of collectDebitAndFeeMovements(params.legs)) {
+      if (movement.purposeId === BOOK_POSTING_PURPOSE.FEE) {
+        specs.push(
+          {
+            ...movement,
+            fromLeg: custodyBookParams(movement.item, fromStateId, params.createdBy),
+            toLeg: feeConfirmingBookParams(movement.item, params.createdBy),
+          },
+          {
+            ...movement,
+            key: `${movement.key}:REV`,
+            fromLeg: feeConfirmingBookParams(movement.item, params.createdBy),
+            toLeg: feeRevenueBookParams(movement.item, params.createdBy),
+          },
+        );
+      } else {
+        specs.push({
+          ...movement,
+          fromLeg: custodyBookParams(movement.item, fromStateId, params.createdBy),
+          toLeg: externalBookParams(movement.item, params.createdBy),
+        });
+      }
+    }
+
+    params.legs.creditItems.forEach((item, index) => {
+      specs.push({
+        key: `C${index}`,
+        item,
+        purposeId: BOOK_POSTING_PURPOSE.AMOUNT,
+        fromLeg: externalBookParams(item, params.createdBy),
+        toLeg: custodyBookParams(item, TRANSACTION_STATE.CONFIRMED.id, params.createdBy),
+      });
+    });
+
+    await this.applyAll(specs, params, 'SET', tx);
+  }
+
+  // --------------------------------------------------------------------
+  // DEPOSIT
+  // --------------------------------------------------------------------
+
+  /**
+   * DEPOSIT — bút toán của từng bước (Book custody Available đích đã biết trước qua BookRepository.findByDepositAddress):
+   *   CONFIRMING: External   -> Confirming
+   *   CONFIRMED : Confirming -> Available
+   *   FAILED    : Confirming -> External
+   * Khoá idempotency theo (journal, phase) nên gọi lại cùng bước là no-op.
+   */
+  async postDeposit(phase: DepositPhase, params: DepositMovementParams, tx: SequelizeTransaction): Promise<void> {
+    const { matchedCustodyBook: available } = params;
+
+    const item: LegItem = {
+      assetId: available.assetId,
+      assetTicker: available.assetTicker,
+      quantity: params.quantity,
+      clientId: available.clientId,
+      accountId: available.accountId,
+      assetTypeId: available.assetTypeId,
+      walletTypeId: available.walletTypeId,
+    };
+
+    const { book: confirmingUnlocked } = await this.bookRepository.getOrCreateBook(
+      custodyBookParams(item, TRANSACTION_STATE.CONFIRMING.id, params.createdBy),
       tx,
     );
+    const { book: externalUnlocked } = await this.bookRepository.getOrCreateBook(externalBookParams(item, params.createdBy), tx);
 
-    const lockedBooks = await this.bookRepository.lockBooksInOrder([matchedCustodyBook.id, externalBookUnlocked.id], tx);
+    const locked = await this.bookRepository.lockBooksInOrder([available.id, confirmingUnlocked.id, externalUnlocked.id], tx);
+    const confirming = locked.get(confirmingUnlocked.id)!;
+    const external = locked.get(externalUnlocked.id)!;
+
+    const [fromBook, toBook] =
+      phase === 'CONFIRMING' ? [external, confirming] : phase === 'CONFIRMED' ? [confirming, locked.get(available.id)!] : [confirming, external];
 
     await this.applyMovement(
       {
-        fromBook: lockedBooks.get(externalBookUnlocked.id)!,
-        toBook: lockedBooks.get(matchedCustodyBook.id)!,
+        fromBook,
+        toBook,
         quantity: params.quantity,
         purposeId: BOOK_POSTING_PURPOSE.AMOUNT,
         journalTransactionId: params.journalTransactionId,
-        movementKey: depositMovementKey(params.uuidToken),
+        movementKey: depositMovementKey(params.uuidToken, phase),
         createdBy: params.createdBy,
       },
       tx,

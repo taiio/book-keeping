@@ -11,11 +11,25 @@ export interface BlockchainSender {
   feePaid?: string;
 }
 
+/** Danh tính book custody để tạo mới khi chưa có (Listener đã "Identify System Deposit" nên biết account nhận). */
+export interface DepositAccountIdentity {
+  clientId: number;
+  accountId: number;
+  assetId: number;
+  assetTypeId: number;
+  walletTypeId: number;
+}
+
 export interface BlockchainRecipient {
   address: string;
   assetTicker: string;
   quantity: string;
   type: 'AMOUNT' | 'REWARD';
+  /**
+   * Chỉ cần khi địa chỉ nhận chưa có Book: có thì "Find / Create Deposit Book" tạo book mới,
+   * không có thì deposit tới địa chỉ lạ vẫn bị từ chối (NotFoundError) vì không đủ dữ liệu để tạo book.
+   */
+  account?: DepositAccountIdentity;
 }
 
 /**

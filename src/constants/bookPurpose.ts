@@ -13,6 +13,22 @@ export const BOOK_PURPOSE = {
     description: 'Represents assets or accounts outside the custody ledger, such as external blockchain or settlement accounts.',
   },
 
+  // Design "Withdraw" (FEE): Fee Confirming Book — phần fee tách ra khỏi bucket Confirming khi giao dịch được CONFIRMED.
+  FEE_CONFIRMING_ACCOUNT: {
+    id: 7,
+    code: 'FEE_CONFIRMING_ACCOUNT',
+    name: 'Fee Confirming Account Book',
+    description: 'Transit book for the fee portion of a confirmed transaction before it is recognised as revenue.',
+  },
+
+  // Design "Withdraw" (FEE): Fee Revenue Book — doanh thu phí của platform (không thuộc client nào).
+  FEE_REVENUE_ACCOUNT: {
+    id: 8,
+    code: 'FEE_REVENUE_ACCOUNT',
+    name: 'Fee Revenue Account Book',
+    description: 'Platform revenue collected from transaction fees.',
+  },
+
   //Temp: we don't use on this book.
   // CLIENT_ASSET_ACCOUNT: {
   //   id: 3,

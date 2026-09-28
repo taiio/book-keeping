@@ -127,14 +127,16 @@ export class JournalTransactionRepository {
       throw new NotFoundError('JournalTransaction', params.journalTransactionId);
     }
 
+    const previousTransactionStateId = journalTransaction.transactionStateId;
+
     if (TERMINAL_JOURNAL_TRANSACTION_STATES.has(journalTransaction.journalTransactionState)) {
-      return { journalTransaction, outcome: 'REPLAYED_NOOP' };
+      return { journalTransaction, outcome: 'REPLAYED_NOOP', previousTransactionStateId };
     }
 
     const verdict = this.evaluateTransition(journalTransaction.transactionStateId, params.targetTransactionStateId, params.expectedStateSequence);
 
     if (verdict === 'REPLAY') {
-      return { journalTransaction, outcome: 'REPLAYED_NOOP' };
+      return { journalTransaction, outcome: 'REPLAYED_NOOP', previousTransactionStateId };
     }
 
     if (verdict === 'INVALID') {
@@ -147,7 +149,7 @@ export class JournalTransactionRepository {
         transaction,
       );
 
-      return { journalTransaction, outcome: 'REJECTED_INVALID_TRANSITION' };
+      return { journalTransaction, outcome: 'REJECTED_INVALID_TRANSITION', previousTransactionStateId };
     }
 
     await this.save(
@@ -165,7 +167,7 @@ export class JournalTransactionRepository {
       transaction,
     );
 
-    return { journalTransaction, outcome: 'APPLIED' };
+    return { journalTransaction, outcome: 'APPLIED', previousTransactionStateId };
   }
 
   private async save(

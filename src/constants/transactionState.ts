@@ -44,6 +44,14 @@ export const TRANSACTION_STATE = {
 } as const;
 
 /**
+ * Bucket của từng state: mỗi state của system transaction có 1 book CUSTODY riêng, và VÀO state nào thì post
+ * bucket(state trước) -> bucket(state đó) — kể cả AUTHORIZING (sau khi kiểm tra amount + fee đủ).
+ *   CONFIRMED  = Available    AUTHORIZING = Reserved     AUTHORIZED = Authorized
+ *   SENT       = Sent         CONFIRMING  = Confirming
+ * DEPOSIT dùng lại bucket Confirming (không có book Pending riêng).
+ */
+
+/**
  * Chuỗi state hợp lệ của 1 transaction, theo đúng thứ tự vòng đời — KHÔNG được bỏ bước.
  * Dùng cho FSM chặt ở JournalTransactionRepository (`expectedStateSequence`) và
  * là nguồn duy nhất để suy ra `TRANSACTION_STATE_RANK`.

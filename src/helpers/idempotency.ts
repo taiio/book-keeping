@@ -1,13 +1,13 @@
-import type { LedgerPhase } from '../interfaces';
+import type { DepositPhase, LedgerPhase } from '../interfaces';
 
 /** Khoá idempotency của 1 movement: ổn định theo (journal, vế, giai đoạn) nên gọi lại là no-op. */
 export function movementKey(uuidToken: string, legKey: string, phase: LedgerPhase): string {
   return `${uuidToken}:${legKey}:${phase}`;
 }
 
-/** Khoá movement của bút toán DEPOSIT (external -> custody) khi CONFIRMED. */
-export function depositMovementKey(uuidToken: string): string {
-  return `${uuidToken}:DEP:CONF`;
+/** Khoá movement của bút toán DEPOSIT theo bước: CONFIRMING (external -> confirming), CONFIRMED (confirming -> available), FAILED (confirming -> external). */
+export function depositMovementKey(uuidToken: string, phase: DepositPhase): string {
+  return `${uuidToken}:DEP:${phase}`;
 }
 
 /**

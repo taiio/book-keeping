@@ -39,16 +39,27 @@ export const TEST_ACCOUNT = {
   assetTicker: 'BTC',
 } as const;
 
-/** Tiêu chí tìm Book theo (purpose, state, ticker) — dùng với `TestLedger.amountOf()`. */
+/** Tiêu chí tìm Book theo (purpose, state, ticker) — dùng với `TestLedger.amountOf()`. Tên bucket theo design doc. */
+const custody = (transactionStateId: number, assetTicker: string) => ({
+  bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
+  transactionStateId,
+  assetTicker,
+});
+
 export const BOOK = {
-  custodyAvailable: (assetTicker: string) => ({
-    bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
-    transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
+  custodyAvailable: (assetTicker: string) => custody(TRANSACTION_STATE.CONFIRMED.id, assetTicker),
+  custodyReserved: (assetTicker: string) => custody(TRANSACTION_STATE.AUTHORIZING.id, assetTicker),
+  custodyAuthorized: (assetTicker: string) => custody(TRANSACTION_STATE.AUTHORIZED.id, assetTicker),
+  custodySent: (assetTicker: string) => custody(TRANSACTION_STATE.SENT.id, assetTicker),
+  custodyConfirming: (assetTicker: string) => custody(TRANSACTION_STATE.CONFIRMING.id, assetTicker),
+  feeConfirming: (assetTicker: string) => ({
+    bookPurposeId: BOOK_PURPOSE.FEE_CONFIRMING_ACCOUNT.id,
+    transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
     assetTicker,
   }),
-  custodyAuthorizing: (assetTicker: string) => ({
-    bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
-    transactionStateId: TRANSACTION_STATE.AUTHORIZING.id,
+  feeRevenue: (assetTicker: string) => ({
+    bookPurposeId: BOOK_PURPOSE.FEE_REVENUE_ACCOUNT.id,
+    transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
     assetTicker,
   }),
   external: (assetTicker: string) => ({

@@ -149,7 +149,7 @@ export type BlockchainDrivenEntity = TransactionEntity | DepositTransactionEntit
 
 export type AuthorizePhase = 'AUTHORIZED' | 'REJECTED' | 'REPLAYED';
 
-/** Kết quả vòng AUTHORIZING của SystemTransactionHandler (chạy trong 1 DB transaction). */
+/** Kết quả vòng AUTHORIZING -> AUTHORIZED của SystemTransactionHandler (chạy trong 1 DB transaction). `AUTHORIZED` = sẵn sàng gọi provider. */
 export interface AuthorizeResult {
   phase: AuthorizePhase;
   /** Bản ghi journal MỚI NHẤT sau vòng authorize (đã phản ánh state/hash vừa ghi). */

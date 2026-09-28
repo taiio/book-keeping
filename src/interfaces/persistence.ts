@@ -117,6 +117,8 @@ export type JournalTransitionOutcome = 'APPLIED' | 'REPLAYED_NOOP' | 'REJECTED_I
 export interface UpdateJournalTransactionResult {
   journalTransaction: JournalTransaction;
   outcome: JournalTransitionOutcome;
+  /** State chi tiết của journal TRƯỚC lệnh này — chính là bucket nguồn mà hiệu ứng kế toán phải trừ ra. */
+  previousTransactionStateId: number | null;
 }
 
 export interface RecordJournalTransactionHistoryParams {

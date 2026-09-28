@@ -16,8 +16,17 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
+  /** Book nhận deposit = book custody ở bucket Available (CONFIRMED) gắn với địa chỉ — không nhầm với Reserved/Confirming/... */
   async findByDepositAddress(address: string, assetTicker: string, transaction: Transaction): Promise<Book | null> {
-    return Book.findOne({ where: { address, assetTicker }, transaction });
+    return Book.findOne({
+      where: {
+        address,
+        assetTicker,
+        bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
+        transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
+      },
+      transaction,
+    });
   }
 
   /**
@@ -88,7 +97,7 @@ export class BookRepository {
   /**
    * Cập nhật số dư Book + ghi `book_history` (POSTING_APPLIED) trong cùng transaction.
    * `book` PHẢI là bản ghi đã khoá. Chỉ book CUSTODY ở bucket CONFIRMED (available) mới
-   * không được âm; các bucket trung gian (AUTHORIZING) và external được phép âm/dương tự do.
+   * không được âm; các bucket trung gian (Reserved/Authorized/Sent/Confirming, Fee) và external được phép âm/dương tự do.
    */
   async updateBook(params: UpdateBookParams, transaction: Transaction): Promise<Book> {
     const { book, amountDelta, sequenceNo, bookPostingId, updatedBy } = params;

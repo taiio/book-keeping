@@ -18,9 +18,10 @@ import { LedgerPipeline } from './LedgerPipeline';
  * Entry point DUY NHẤT cho mọi transaction do hệ thống khởi tạo (WITHDRAW/STAKE/UNSTAKE/RESTAKE).
  * KHÔNG tạo các method riêng (handleWithdraw/handleStake/...) — mọi khác biệt chỉ nằm ở `getAccountingLegs()`.
  *
- * Vòng đời phía hệ thống:
- *   AUTHORIZING -> AUTHORIZED -> SENT        (class này)
- *   SENT -> CONFIRMING -> CONFIRMED/FAILED   (BlockchainEventHandler)
+ * Vòng đời phía hệ thống (mỗi state đều có đúng 1 bút toán đúp, xem LedgerPipeline):
+ *   AUTHORIZING (kiểm tra amount + fee, đủ thì Available -> Reserved) -> AUTHORIZED (Reserved -> Authorized)
+ *     -> SENT (Authorized -> Sent)                                          (class này)
+ *   SENT -> CONFIRMING -> CONFIRMED/FAILED                                  (BlockchainEventHandler)
  *
  * Handler KHÔNG tự đụng tới JournalTransaction/Book/BookPosting/history — mọi thứ đi qua
  * LedgerPipeline. Handler chỉ quyết định: bước nào chạy khi nào, và gọi blockchain provider
@@ -41,8 +42,8 @@ export class SystemTransactionHandler {
   }
 
   /**
-   * Validate -> open JournalTransaction -> AUTHORIZING -> reserve (LedgerPipeline)
-   * -> AUTHORIZED -> gọi Blockchain Provider (NGOÀI transaction) -> SENT.
+   * Validate -> open JournalTransaction (AUTHORIZING) -> kiểm tra amount + fee, đủ thì Available -> Reserved
+   * -> AUTHORIZED (Reserved -> Authorized) -> gọi Blockchain Provider (NGOÀI transaction) -> SENT (Authorized -> Sent).
    */
   async handle(transaction: DomainTransaction, createdBy?: number): Promise<TransactionEntity> {
     this.validateInput(transaction);
@@ -72,6 +73,9 @@ export class SystemTransactionHandler {
   /**
    * 1 DB transaction duy nhất cho toàn bộ vòng AUTHORIZING -> AUTHORIZED (hoặc
    * AUTHORIZING -> REJECTED nếu thiếu số dư). Không gọi blockchain provider ở đây.
+   *
+   * Journal đã commit ở AUTHORIZED mà chưa có kết quả submit nghĩa là "không rõ" (crash giữa chừng): tiền nằm
+   * ở bucket Authorized để đối soát, KHÔNG tự hoàn — hoàn ở đây có thể trùng với 1 lần submit đã thành công.
    */
   private async authorize(transaction: DomainTransaction, tx: SequelizeTransaction, createdBy?: number): Promise<AuthorizeResult> {
     // sourceContent lưu payload gốc ngay lúc tạo: blockchainEventHandler cần nó để dựng lại
@@ -93,12 +97,16 @@ export class SystemTransactionHandler {
       return { phase: 'REPLAYED', journalTransaction };
     }
 
-    const reserveResult = await this.ledgerPipeline.reserve(
-      { journalTransactionId: journalTransaction.id, uuidToken: journalTransaction.uuidToken, legs: getAccountingLegs(transaction), createdBy },
+    const legs = getAccountingLegs(transaction);
+
+    // AUTHORIZING: kiểm tra Available đủ amount + fee, đủ thì post Available -> Reserved.
+    // INSUFFICIENT -> REJECTED, NO POST (reserve() không post gì khi thiếu).
+    const reserved = await this.ledgerPipeline.reserve(
+      { journalTransactionId: journalTransaction.id, uuidToken: journalTransaction.uuidToken, legs, createdBy },
       tx,
     );
 
-    if (!reserveResult.ok) {
+    if (!reserved.ok) {
       const rejected = await this.ledgerPipeline.transition(
         {
           journalTransactionId: journalTransaction.id,
@@ -111,15 +119,18 @@ export class SystemTransactionHandler {
       return {
         phase: 'REJECTED',
         journalTransaction: rejected.journalTransaction,
-        errorMessage: `Insufficient balance: ${reserveResult.shortfalls.join('; ')}`,
+        errorMessage: `Insufficient balance: ${reserved.shortfalls.join('; ')}`,
       };
     }
 
+    // AUTHORIZED: Reserved -> Authorized. Chốt vào DB TRƯỚC khi gọi provider để mọi lần crash đều có dấu vết.
     const authorized = await this.ledgerPipeline.transition(
       {
         journalTransactionId: journalTransaction.id,
         targetTransactionStateId: TRANSACTION_STATE.AUTHORIZED.id,
         expectedStateSequence: TRANSACTION_STATE_SEQUENCE,
+        legs,
+        onApplied: 'ADVANCE',
         updatedBy: createdBy,
       },
       tx,
@@ -130,7 +141,7 @@ export class SystemTransactionHandler {
 
   /**
    * Gọi blockchain provider NGOÀI mọi DB transaction, sau đó mở 1 transaction mới, ngắn,
-   * để ghi nhận SENT (thành công) hoặc REJECTED + hoàn reserve (thất bại).
+   * để ghi nhận SENT (Authorized -> Sent) hoặc REJECTED + hoàn tiền (Authorized -> Available) nếu submit thất bại.
    */
   private async submitAndAdvance(
     transaction: DomainTransaction,
@@ -167,6 +178,8 @@ export class SystemTransactionHandler {
           transactionHash: submission.transactionHash,
           targetTransactionStateId: TRANSACTION_STATE.SENT.id,
           expectedStateSequence: TRANSACTION_STATE_SEQUENCE,
+          legs: getAccountingLegs(transaction),
+          onApplied: 'ADVANCE',
           updatedBy: createdBy,
         },
         tx,

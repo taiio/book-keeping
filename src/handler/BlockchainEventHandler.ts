@@ -12,7 +12,15 @@ import {
   TRANSACTION_STATE_SEQUENCE,
   TRANSACTION_TYPE,
 } from '../constants';
-import { depositIdempotencyToken, getAccountingLegs, matchesSender, parseSourceContent, toDepositEntity, toTransactionEntity } from '../helpers';
+import {
+  custodyBookParams,
+  depositIdempotencyToken,
+  getAccountingLegs,
+  matchesSender,
+  parseSourceContent,
+  toDepositEntity,
+  toTransactionEntity,
+} from '../helpers';
 import {
   BlockchainDrivenEntity,
   BlockchainMessagePayload,
@@ -102,8 +110,15 @@ export class BlockchainEventHandler {
 
     switch (payload.status) {
       case BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMING: {
+        // SENT -> CONFIRMING: Sent -> Confirming.
         const { journalTransaction } = await this.ledgerPipeline.transition(
-          { ...base, targetTransactionStateId: TRANSACTION_STATE.CONFIRMING.id, expectedStateSequence: TRANSACTION_STATE_SEQUENCE },
+          {
+            ...base,
+            targetTransactionStateId: TRANSACTION_STATE.CONFIRMING.id,
+            expectedStateSequence: TRANSACTION_STATE_SEQUENCE,
+            legs,
+            onApplied: 'ADVANCE',
+          },
           tx,
         );
 
@@ -111,6 +126,7 @@ export class BlockchainEventHandler {
       }
 
       case BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMED: {
+        // Confirming -> External (amount), Confirming -> Fee Confirming -> Fee Revenue (fee).
         // Chỉ settle khi transition thực sự APPLIED — không post nửa chừng khi FSM từ chối
         // 1 transition sai thứ tự, hoặc khi đây chỉ là event trùng lặp (đã post ở lần trước).
         const { journalTransaction } = await this.ledgerPipeline.transition(
@@ -129,8 +145,8 @@ export class BlockchainEventHandler {
       }
 
       case BLOCKCHAIN_TRANSACTION_STATUS.FAILED: {
-        // Chỉ revert khi đang ở SENT/CONFIRMING, đúng biên "CONFIRMING -> FAILED" của design
-        // doc. Ngoài ra coi là event trễ/không hợp lệ và bỏ qua an toàn.
+        // Hoàn từ bucket hiện tại (Sent hoặc Confirming) về Available. Chỉ revert khi đang ở SENT/CONFIRMING,
+        // đúng biên "CONFIRMING -> FAILED" của design doc. Ngoài ra coi là event trễ/không hợp lệ và bỏ qua an toàn.
         if (existing.transactionStateId == null || !TRANSACTION_STATE_IDS_FAILABLE_BY_BLOCKCHAIN.includes(existing.transactionStateId)) {
           return toTransactionEntity(original, existing);
         }
@@ -149,7 +165,12 @@ export class BlockchainEventHandler {
   // No matching system transaction: Detect Valid Deposit -> DEPOSIT
   // --------------------------------------------------------------------
 
-  private async findDepositBook(payload: BlockchainMessagePayload, tx: SequelizeTransaction): Promise<DepositBookMatch | null> {
+  /**
+   * Find / Create Deposit Book: tìm book Available theo địa chỉ nhận; chưa có thì tạo mới NẾU payload
+   * mang sẵn danh tính account (`recipient.account`, do Listener "Identify System Deposit" gắn vào).
+   * Thiếu cả hai -> null (không đủ dữ liệu để tạo book đúng chủ).
+   */
+  private async findOrCreateDepositBook(payload: BlockchainMessagePayload, tx: SequelizeTransaction): Promise<DepositBookMatch | null> {
     for (const recipient of payload.recipients) {
       const book = await this.bookRepository.findByDepositAddress(recipient.address, recipient.assetTicker, tx);
 
@@ -158,11 +179,35 @@ export class BlockchainEventHandler {
       }
     }
 
+    for (const recipient of payload.recipients) {
+      if (!recipient.account) {
+        continue;
+      }
+
+      const { book } = await this.bookRepository.getOrCreateBook(
+        {
+          ...custodyBookParams(
+            { ...recipient.account, assetTicker: recipient.assetTicker, quantity: recipient.quantity },
+            TRANSACTION_STATE.CONFIRMED.id,
+          ),
+          address: recipient.address,
+        },
+        tx,
+      );
+
+      return { book, recipient };
+    }
+
     return null;
   }
 
+  /**
+   * DEPOSIT (design): CONFIRMING (External -> Confirming) -> CONFIRMED (Confirming -> Available) | FAILED (Confirming -> External).
+   * Journal luôn được mở ở CONFIRMING kèm bút toán External -> Confirming, kể cả khi event đầu tiên thấy được là
+   * CONFIRMED/FAILED (provider bỏ qua CONFIRMING) — nhờ vậy mọi deposit đều có đủ vết audit và tổng luôn cân.
+   */
   private async processDeposit(payload: BlockchainMessagePayload, tx: SequelizeTransaction, createdBy?: number): Promise<DepositTransactionEntity> {
-    const matched = await this.findDepositBook(payload, tx);
+    const matched = await this.findOrCreateDepositBook(payload, tx);
 
     if (!matched) {
       // Không khớp system transaction NÀO và cũng không phải deposit tới 1 địa chỉ đã biết -> không có Book nào để post.
@@ -184,7 +229,21 @@ export class BlockchainEventHandler {
     );
 
     let journalTransaction = opened.journalTransaction;
+
+    // uuidToken lấy từ journal (không phải giá trị random vừa sinh) để khoá idempotency ổn định giữa các event của cùng deposit.
+    const movement = {
+      journalTransactionId: journalTransaction.id,
+      uuidToken: journalTransaction.uuidToken,
+      matchedCustodyBook: book,
+      quantity: recipient.quantity,
+      createdBy,
+    };
     const base = { journalTransactionId: journalTransaction.id, transactionHash: payload.transactionHash, updatedBy: createdBy };
+
+    // CONFIRMING: External -> Confirming. Chỉ post khi journal vừa được tạo — duplicate event không post lại.
+    if (opened.created) {
+      await this.ledgerPipeline.postDeposit('CONFIRMING', movement, tx);
+    }
 
     if (payload.status === BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMED) {
       const result = await this.ledgerPipeline.transition(
@@ -194,23 +253,19 @@ export class BlockchainEventHandler {
 
       journalTransaction = result.journalTransaction;
 
+      // Confirming -> Available, chỉ khi transition thực sự APPLIED (event trùng / đến trễ là no-op).
       if (result.outcome === 'APPLIED') {
-        await this.ledgerPipeline.settleDeposit(
-          {
-            journalTransactionId: journalTransaction.id,
-            uuidToken: journalTransaction.uuidToken,
-            matchedCustodyBook: book,
-            quantity: recipient.quantity,
-            createdBy,
-          },
-          tx,
-        );
+        await this.ledgerPipeline.postDeposit('CONFIRMED', movement, tx);
       }
     } else if (payload.status === BLOCKCHAIN_TRANSACTION_STATUS.FAILED) {
-      // Deposit chưa từng reserve gì (không có bước AUTHORIZING) nên FAILED chỉ đóng journal lại cho audit, không có gì để hoàn.
       const result = await this.ledgerPipeline.transition({ ...base, journalTransactionState: JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED }, tx);
 
       journalTransaction = result.journalTransaction;
+
+      // Confirming -> External: trả lại đúng phần đã ghi nhận ở CONFIRMING.
+      if (result.outcome === 'APPLIED') {
+        await this.ledgerPipeline.postDeposit('FAILED', movement, tx);
+      }
     }
     // status CONFIRMING: journal đã ở đúng state ngay từ lúc openJournal, không cần làm gì thêm.
 
