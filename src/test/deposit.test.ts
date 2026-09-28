@@ -29,13 +29,29 @@ const appliedHistories = (ledger: TestLedger) =>
 describe('DEPOSIT — lifecycle', () => {
   let ledger: TestLedger;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     ledger = createTestLedger();
-    ledger.seedCustodyBook({ address: DEPOSIT_ADDRESS, amount: '0' });
+    // Book của recipient phải tồn tại TRƯỚC khi deposit xảy ra.
+    await ledger.createRecipientBooks({ address: DEPOSIT_ADDRESS });
   });
 
   afterEach(() => ledger.restore());
   after(closeTestDatabase);
+
+  it('reuses the recipient books created beforehand — only the shared External book is added', async () => {
+    const before = await ledger.createRecipientBooks({ address: DEPOSIT_ADDRESS }); // get-or-create: trả lại đúng book đã có
+    const booksBefore = ledger.tables.books.rows.length;
+
+    assert.equal(booksBefore, 2, 'Available + Confirming');
+    assert.equal(ledger.tables.bookHistories.rows.filter((row) => row.historyTransactionTypeId === HISTORY_EVENT_TYPE.CREATED).length, 2);
+
+    await ledger.blockchainEventHandler.handle(depositEvent(BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMED));
+
+    assert.equal(ledger.tables.books.rows.length, booksBefore + 1, 'only External is created by the deposit');
+    assert.equal(ledger.tables.books.find(BOOK.custodyAvailable('BTC'))?.id, before.available.id);
+    assert.equal(ledger.tables.books.find(BOOK.custodyConfirming('BTC'))?.id, before.confirming.id);
+    assert.equal(ledger.amountOf(BOOK.custodyAvailable('BTC')), QUANTITY);
+  });
 
   it('CONFIRMING: External -1000 / Confirming +1000 (available untouched)', async () => {
     const entity = await ledger.blockchainEventHandler.handle(depositEvent(BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMING));
@@ -126,7 +142,7 @@ describe('DEPOSIT — lifecycle', () => {
   });
 });
 
-describe('DEPOSIT — Find / Create Deposit Book', () => {
+describe('DEPOSIT — Find / Create Deposit Book (fallback when the recipient has no book yet)', () => {
   let ledger: TestLedger;
 
   beforeEach(() => {
@@ -163,9 +179,10 @@ describe('DEPOSIT — Find / Create Deposit Book', () => {
 describe('DEPOSIT — idempotency', () => {
   let ledger: TestLedger;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     ledger = createTestLedger();
-    ledger.seedCustodyBook({ address: DEPOSIT_ADDRESS, amount: '0' });
+    // Book của recipient phải tồn tại TRƯỚC khi deposit xảy ra.
+    await ledger.createRecipientBooks({ address: DEPOSIT_ADDRESS });
   });
 
   afterEach(() => ledger.restore());

@@ -15,6 +15,8 @@ async function seedBookPurposes(): Promise<void> {
 
 async function seedTransactionState(): Promise<void> {
   for (const transactionState of Object.values(TRANSACTION_STATE)) {
+    if (!transactionState.id) continue;
+
     await TransactionState.upsert({
       id: transactionState.id,
       code: transactionState.code,
@@ -29,8 +31,28 @@ async function seed(): Promise<void> {
   await seedTransactionState();
 }
 
+const sql = `
+DROP TABLE public.book CASCADE;
+
+DROP TABLE public.book_history CASCADE;
+
+DROP TABLE public.book_posting CASCADE;
+
+DROP TABLE public.book_purpose CASCADE;
+
+DROP TABLE public.journal_transaction CASCADE;
+
+DROP TABLE public.journal_transaction_history CASCADE;
+
+DROP TABLE public.transaction_state CASCADE;
+
+`
+
 async function main(): Promise<void> {
   try {
+    console.log('DROP ALL TABLE CASADE');
+    await sequelize.query(sql);
+
     console.log('Syncing database...');
 
     await sequelize.authenticate();

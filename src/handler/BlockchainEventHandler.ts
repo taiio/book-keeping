@@ -242,7 +242,7 @@ export class BlockchainEventHandler {
 
     // CONFIRMING: External -> Confirming. Chỉ post khi journal vừa được tạo — duplicate event không post lại.
     if (opened.created) {
-      await this.ledgerPipeline.postDeposit('CONFIRMING', movement, tx);
+      await this.ledgerPipeline.postDeposit(TRANSACTION_STATE.CONFIRMING.code, movement, tx);
     }
 
     if (payload.status === BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMED) {
@@ -255,7 +255,7 @@ export class BlockchainEventHandler {
 
       // Confirming -> Available, chỉ khi transition thực sự APPLIED (event trùng / đến trễ là no-op).
       if (result.outcome === 'APPLIED') {
-        await this.ledgerPipeline.postDeposit('CONFIRMED', movement, tx);
+        await this.ledgerPipeline.postDeposit(TRANSACTION_STATE.CONFIRMED.code, movement, tx);
       }
     } else if (payload.status === BLOCKCHAIN_TRANSACTION_STATUS.FAILED) {
       const result = await this.ledgerPipeline.transition({ ...base, journalTransactionState: JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED }, tx);

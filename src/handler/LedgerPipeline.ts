@@ -357,9 +357,9 @@ export class LedgerPipeline {
   // --------------------------------------------------------------------
 
   /**
-   * DEPOSIT — bút toán của từng bước (Book custody Available đích đã biết trước qua BookRepository.findByDepositAddress):
+   * DEPOSIT — bút toán của từng bước (Book custody Confirmed đích đã biết trước qua BookRepository.findByDepositAddress):
    *   CONFIRMING: External   -> Confirming
-   *   CONFIRMED : Confirming -> Available
+   *   CONFIRMED : Confirming -> Confirmed
    *   FAILED    : Confirming -> External
    * Khoá idempotency theo (journal, phase) nên gọi lại cùng bước là no-op.
    */
@@ -387,7 +387,7 @@ export class LedgerPipeline {
     const external = locked.get(externalUnlocked.id)!;
 
     const [fromBook, toBook] =
-      phase === 'CONFIRMING' ? [external, confirming] : phase === 'CONFIRMED' ? [confirming, locked.get(available.id)!] : [confirming, external];
+      phase === TRANSACTION_STATE.CONFIRMING.code ? [external, confirming] : phase === TRANSACTION_STATE.CONFIRMED.code ? [confirming, locked.get(available.id)!] : [confirming, external];
 
     await this.applyMovement(
       {

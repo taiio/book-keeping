@@ -6,6 +6,7 @@ import type { Transaction as SequelizeTransaction } from 'sequelize';
 import type { UnitOfWork } from '../../common/UnitOfWork';
 import { sequelize } from '../../config/database';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../../constants';
+import { custodyBookParams } from '../../helpers';
 import { BlockchainEventHandler } from '../../handler/BlockchainEventHandler';
 import { LedgerPipeline } from '../../handler/LedgerPipeline';
 import { SystemTransactionHandler } from '../../handler/SystemTransactionHandler';
@@ -106,6 +107,12 @@ function patchModel(model: unknown, table: InMemoryTable): void {
   });
 }
 
+export interface RecipientBooksParams {
+  /** Địa chỉ nhận deposit của recipient. */
+  address: string;
+  assetTicker?: string;
+}
+
 export interface SeedCustodyBookParams {
   assetTicker?: string;
   amount: string;
@@ -156,6 +163,25 @@ export function createTestLedger() {
         lastSequenceNo: 0,
         address: address ?? null,
       });
+    },
+
+    /**
+     * Tạo sẵn các book của recipient TRƯỚC khi deposit, đúng thứ tự thật của hệ thống: book được mở qua
+     * BookRepository.getOrCreateBook (nên có book_history CREATED, amount = 0), không insert thẳng vào bảng.
+     *   - Available (custody @ CONFIRMED) gắn với địa chỉ nhận — book mà BlockchainEventHandler tìm theo address.
+     *   - Confirming (custody @ CONFIRMING) — bucket deposit đi qua trước khi vào Available.
+     * Book External là book hệ thống dùng chung (không thuộc recipient) nên do pipeline tự get-or-create.
+     */
+    async createRecipientBooks({ address, assetTicker = TEST_ACCOUNT.assetTicker }: RecipientBooksParams) {
+      const item = { ...TEST_ACCOUNT, assetTicker, quantity: '0' };
+
+      const { book: available } = await bookRepository.getOrCreateBook(
+        { ...custodyBookParams(item, TRANSACTION_STATE.CONFIRMED.id), address },
+        fakeTransaction,
+      );
+      const { book: confirming } = await bookRepository.getOrCreateBook(custodyBookParams(item, TRANSACTION_STATE.CONFIRMING.id), fakeTransaction);
+
+      return { available, confirming };
     },
 
     /** Số dư của book khớp `match`, hoặc undefined nếu book chưa tồn tại. */
