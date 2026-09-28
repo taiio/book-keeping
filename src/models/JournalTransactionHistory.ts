@@ -3,7 +3,7 @@ import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, ForeignKey, 
 import { JournalTransaction } from './JournalTransaction';
 import { TransactionState } from './TransactionState';
 import { JOURNAL_TRANSACTION_STATE } from '../constants';
-import { JournalTransactionStateValue } from '../constants/journalTransactionState';
+import type { JournalTransactionStateValue } from '../interfaces';
 
 @Table({
   tableName: 'journal_transaction_history',

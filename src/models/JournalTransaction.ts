@@ -4,7 +4,7 @@ import { JournalTransactionHistory } from './JournalTransactionHistory';
 import { BookPosting } from './BookPosting';
 import { TransactionState } from './TransactionState';
 import { JOURNAL_TRANSACTION_STATE } from '../constants';
-import { JournalTransactionStateValue } from '../constants/journalTransactionState';
+import type { JournalTransactionStateValue } from '../interfaces';
 
 @Table({
   tableName: 'journal_transaction',

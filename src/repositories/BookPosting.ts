@@ -2,12 +2,13 @@ import { randomUUID } from 'crypto';
 import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
+import { CreateBookPostingParams } from '../interfaces';
 import { BookPosting } from '../models';
 import { BookRepository } from './Book';
 
 /**
- * @autoInjectable(): tsyringe tự suy ra dependency (BookRepository) qua kiểu
- * TypeScript của tham số constructor, không cần khai báo @inject(...) thủ công.
+ * Tạo BookPosting (idempotent theo `idempotencyToken`) và kéo theo update Book +
+ * `book_history` (qua BookRepository.updateBook). Gọi lại cùng token là no-op.
  */
 @singleton()
 @autoInjectable()
@@ -18,7 +19,7 @@ export class BookPostingRepository {
     this.bookRepository = bookRepository!;
   }
 
-  async createBookPosting(params: any, transaction: Transaction): Promise<BookPosting> {
+  async createBookPosting(params: CreateBookPostingParams, transaction: Transaction): Promise<BookPosting> {
     const lockedBook = await this.bookRepository.lockBookById(params.bookId, transaction);
     const nextSequenceNo = Number(lockedBook.lastSequenceNo) + 1;
 
@@ -49,8 +50,7 @@ export class BookPostingRepository {
         amountDelta: params.amount,
         sequenceNo: nextSequenceNo,
         bookPostingId: posting.id,
-        historyTransactionTypeId: params.historyTransactionTypeId,
-        updatedBy: params.createdBy ?? null,
+        updatedBy: params.createdBy,
       },
       transaction,
     );

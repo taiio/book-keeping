@@ -19,9 +19,6 @@
                     AUTHORIZING → AUTHORIZED
                                    │
                                    ▼
-                              SUBMITTING
-                                   │
-                                   ▼
                                   SENT
                                    │
                                    │
@@ -102,6 +99,35 @@ Only two books are currently used:
 
 ---
 
+## History Tracking
+
+Two history tables record the flow. Both are written **inside the same DB transaction** as the change they
+describe, and only through `LedgerPipeline` → repositories.
+
+```text
+JournalTransaction ──► journal_transaction_history      (history of STATE)
+        │
+        ▼
+   BookPosting ──► Book ──► book_history                (history of BALANCE)
+```
+
+| Event                                          | Table                         | `history_transaction_type`    |
+| ---------------------------------------------- | ----------------------------- | ----------------------------- |
+| Journal created (`openJournal`)                | `journal_transaction_history` | `CREATED`                     |
+| Journal state changed (`transition`)           | `journal_transaction_history` | `STATE_ADVANCED`              |
+| Out-of-sequence transition (journal cancelled) | `journal_transaction_history` | `REJECTED_INVALID_TRANSITION` |
+| Book created (`getOrCreateBook`)               | `book_history`                | `CREATED` (amount = 0)        |
+| Posting applied to a book                      | `book_history`                | `POSTING_APPLIED`             |
+
+Rules:
+
+- `journal_transaction_history` stores a **snapshot** of the journal after the event (state, detailed state, hash).
+- `book_history` stores the book balance **after** the event and links to `book_posting_id`.
+- Duplicate requests / events (same idempotency token, or a replayed transition) write **no** posting and **no** history.
+- A posting without a `book_history` row, or a state change without a `journal_transaction_history` row, must never exist.
+
+---
+
 ## Repository Structure
 
 ```text
@@ -114,29 +140,51 @@ Only two books are currently used:
 │   ├── database.ts
 │   └── env.ts
 │
-├── constants/
+├── constants/              # Single source of truth for every state / type / purpose
 │
 ├── di/
 │   └── container.ts
 │
-├── handler/
-│   ├── systemTransactionHandler.ts
-│   └── blockchainEventHandler.ts
+├── handler/                # Pure classes only — no exported functions / constants
+│   ├── LedgerPipeline.ts             # The only place that touches journal, postings, books and both history tables
+│   ├── SystemTransactionHandler.ts
+│   └── BlockchainEventHandler.ts
 │
-├── interfaces/
+├── helpers/                # Pure, stateless functions shared by handlers
+│   ├── accounting.ts                 # getAccountingLegs, collectDebitAndFeeMovements
+│   ├── book.ts                       # custodyBookParams, externalBookParams
+│   ├── entity.ts                     # mapDbStateToEntityState, toTransactionEntity, toDepositEntity
+│   ├── blockchainSubmitter.ts        # NOT_WIRED_SUBMITTER (null-object for IBlockchainSubmitter)
+│   ├── correlation.ts                # source-content parsing / sender matching
+│   ├── idempotency.ts                # idempotency keys
+│   └── quantity.ts                   # quantity math
+│
+├── interfaces/             # ALL interfaces and types, grouped by concern
+│   ├── transaction.ts                # AccountItem / FeeItem, Withdraw / Stake / Unstake / Restake, entities, state types
+│   ├── blockchain.ts                 # blockchain payload, IBlockchainSubmitter, deposit matching
+│   ├── persistence.ts                # IUnitOfWork, Book / BookPosting / BookHistory / Journal* params and results
+│   └── ledger.ts                     # LedgerPipeline params, movements, transitions
 │
 ├── models/
-│   ├── JournalTransaction.ts
-│   ├── JournalTransactionHistory.ts
-│   ├── BookPosting.ts
-│   ├── Book.ts
-│   ├── BookHistory.ts
-│   └── ...
 │
 ├── repositories/
+│   ├── Book.ts
+│   ├── BookHistory.ts                # only writer of book_history
+│   ├── BookPosting.ts
+│   ├── JournalTransaction.ts
+│   └── JournalTransactionHistory.ts  # only writer of journal_transaction_history
 │
-└── test/
+└── test/                   # node:test, in-memory ledger (see `npm test`)
 ```
+
+Conventions:
+
+- Interfaces and types live in `interfaces/` only. Types that mirror a constant are **derived** from it
+  (`typeof TRANSACTION_STATE`, `typeof TRANSACTION_TYPE`, ...) — never re-declared by hand.
+- States, sequences and lookup tables are defined once in `constants/`.
+- Files in `handler/` contain a single class each. Functions shared by handlers (or needed by only one of them
+  but not tied to its state) live in `helpers/`.
+- Every `AccountItem` / `FeeItem` carries its own `assetTicker`; books are created from it directly (no ticker lookup / placeholder).
 
 ---
 
@@ -154,8 +202,7 @@ Only two books are currently used:
 │ RESTAKE                          │
 │                                  │
 │ AUTHORIZING → AUTHORIZED         │
-│ AUTHORIZED  → SUBMITTING         │
-│ SUBMITTING  → SENT               │
+│ AUTHORIZED  → SENT               │
 └──────────────────────────────────┘
 
 
@@ -191,9 +238,6 @@ AUTHORIZING
 AUTHORIZED
      │
      ▼
-SUBMITTING
-     │
-     ▼
 SENT
 ```
 
@@ -214,7 +258,6 @@ Rejection can happen during the system lifecycle:
 ```text
 AUTHORIZING ──► REJECTED
 AUTHORIZED  ──► REJECTED
-SUBMITTING  ──► REJECTED
 SENT        ──► REJECTED
 ```
 

@@ -1,241 +1,183 @@
 import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { JournalTransaction, JournalTransactionHistory } from '../models';
 import { NotFoundError } from '../common/errors';
+import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TERMINAL_JOURNAL_TRANSACTION_STATES, TRANSACTION_STATE_RANK } from '../constants';
+import {
+  GetOrCreateJournalTransactionParams,
+  GetOrCreateJournalTransactionResult,
+  UpdateJournalTransactionParams,
+  UpdateJournalTransactionResult,
+} from '../interfaces';
+import { JournalTransaction } from '../models';
+import { JournalTransactionHistoryRepository } from './JournalTransactionHistory';
 
-import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK, HISTORY_EVENT_TYPE } from '../constants';
-
-/**
- * Các state coi là "kết thúc" (terminal). Một khi journal đã vào 1 trong 2
- * state này thì mọi lệnh update tiếp theo (kể cả state trùng, hay 1 event
- * bị gửi lại / đến trễ) đều là replay và phải là no-op — không được ghi
- * thêm history, không được đổi state ngược lại.
- */
-const TERMINAL_STATES: ReadonlySet<string> = new Set([JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED]);
+type TransitionVerdict = 'APPLY' | 'REPLAY' | 'INVALID';
 
 @singleton()
 @autoInjectable()
 export class JournalTransactionRepository {
+  private readonly historyRepository: JournalTransactionHistoryRepository;
+
+  constructor(historyRepository?: JournalTransactionHistoryRepository) {
+    this.historyRepository = historyRepository!;
+  }
+
   async findByTransactionHash(transactionHash: string, transaction: Transaction): Promise<JournalTransaction | null> {
     return JournalTransaction.findOne({ where: { transactionHash }, transaction });
   }
 
   /**
-   * Idempotent theo `idempotencyToken`.
+   * Idempotent theo `idempotencyToken`, và ghi `journal_transaction_history` (CREATED)
+   * CHỈ khi thật sự vừa tạo mới — gửi lại / duplicate event không nhân đôi lịch sử.
    *
-   * Trước đây: `findOne` rồi `create` — đây là race condition kinh điển
-   * (TOCTOU). Với 2 request/event trùng idempotencyToken đến gần như đồng
-   * thời, ở mức isolation READ_COMMITTED cả 2 đều có thể SELECT ra "chưa
-   * tồn tại" (vì chưa ai commit) rồi cùng chạy INSERT — 1 trong 2 sẽ vi
-   * phạm unique constraint và làm rollback nguyên transaction thay vì trả
-   * về bản ghi đã tồn tại như kỳ vọng của một API idempotent.
+   * Dùng `findOrCreate` (SELECT rồi INSERT trong SAVEPOINT) thay vì `findOne` + `create`
+   * để tránh race TOCTOU khi 2 request trùng token đến cùng lúc: bên thua cuộc dính
+   * unique constraint sẽ tự rollback về savepoint rồi SELECT lại bản ghi đã tồn tại.
+   * Điều kiện: `idempotencyToken` phải có unique index thật ở DB (đã có).
    *
-   * `Model.findOrCreate` giải quyết đúng bài toán này: nó SELECT trước,
-   * nếu không thấy thì thử INSERT trong 1 SAVEPOINT lồng trong transaction
-   * hiện tại; nếu INSERT đó dính unique constraint (do đối thủ vừa commit
-   * trước), nó rollback về savepoint đó rồi SELECT lại — tất cả vẫn nằm
-   * trong transaction gốc của unitOfWork, không cần catch lỗi thủ công ở
-   * tầng flow. Điều kiện bắt buộc: cột where phải có unique index thật ở
-   * DB — `idempotencyToken` trên JournalTransaction đã có (`unique: true`).
+   * Không truyền idempotencyToken thì luôn tạo mới — KHÔNG được `findOrCreate` theo
+   * `where: { idempotencyToken: null }` vì sẽ gộp nhầm các journal không liên quan.
    */
   async getOrCreateJournalTransaction(
-    params: any,
+    params: GetOrCreateJournalTransactionParams,
     transaction: Transaction,
-  ): Promise<any> {
-    // idempotencyToken là nullable ở DB (cho phép nhiều NULL cùng lúc theo
-    // chuẩn Postgres unique index). Nếu caller không truyền, KHÔNG được
-    // findOrCreate theo where: { idempotencyToken: null } vì như vậy sẽ
-    // vô tình khớp với BẤT KỲ journal nào khác cũng đang có token null —
-    // gộp nhầm 2 giao dịch không liên quan vào làm một.
-    if (!params.idempotencyToken) {
-      const journalTransaction = await JournalTransaction.create(
-        {
-          uuidToken: params.uuidToken,
-          transactionTypeId: params.transactionTypeId,
-          fromAccountId: params.fromAccountId ?? null,
-          toAccountId: params.toAccountId ?? null,
-          transactionHash: params.transactionHash ?? null,
-          idempotencyToken: null,
-          journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
-          transactionStateId: params.transactionStateId ?? null,
-          businessPostDateTime: params.businessPostDateTime,
-          createdBy: params.createdBy ?? null,
-        },
-        { transaction },
-      );
+  ): Promise<GetOrCreateJournalTransactionResult> {
+    const values = {
+      uuidToken: params.uuidToken,
+      transactionTypeId: params.transactionTypeId,
+      fromAccountId: params.fromAccountId ?? null,
+      toAccountId: params.toAccountId ?? null,
+      transactionHash: params.transactionHash ?? null,
+      sourceContent: params.sourceContent ?? null,
+      idempotencyToken: params.idempotencyToken ?? null,
+      journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
+      transactionStateId: params.transactionStateId ?? null,
+      businessPostDateTime: params.businessPostDateTime,
+      createdBy: params.createdBy ?? null,
+    };
 
-      await JournalTransactionHistory.create(
-        {
-          historyTransactionTypeId: params.historyTransactionTypeId,
-          journalTransactionId: journalTransaction.id,
-          transactionHash: params.transactionHash ?? null,
-          journalTransactionState: params.journalTransactionState,
-          transactionStateId: params.transactionStateId ?? null,
-          createdBy: params.createdBy ?? null,
-        },
-        { transaction },
-      );
+    let journalTransaction: JournalTransaction;
+    let created: boolean;
 
-      return { journalTransaction, created: true };
+    if (params.idempotencyToken) {
+      [journalTransaction, created] = await JournalTransaction.findOrCreate({
+        where: { idempotencyToken: params.idempotencyToken },
+        defaults: values,
+        transaction,
+      });
+    } else {
+      journalTransaction = await JournalTransaction.create(values, { transaction });
+      created = true;
     }
 
-    const [journalTransaction, created] = await JournalTransaction.findOrCreate({
-      where: { idempotencyToken: params.idempotencyToken },
-      defaults: {
-        uuidToken: params.uuidToken,
-        transactionTypeId: params.transactionTypeId,
-        fromAccountId: params.fromAccountId ?? null,
-        toAccountId: params.toAccountId ?? null,
-        transactionHash: params.transactionHash ?? null,
-        idempotencyToken: params.idempotencyToken,
-        journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
-        transactionStateId: params.transactionStateId ?? null,
-        businessPostDateTime: params.businessPostDateTime,
-        createdBy: params.createdBy ?? null,
-      },
-      transaction,
-    });
-
-    // Chỉ ghi history CREATED khi thật sự vừa tạo mới. Nếu !created nghĩa
-    // là đây là 1 lần gửi lại / duplicate event của cùng request — bản
-    // thân JournalTransaction không đổi, nên không được nhân đôi dòng
-    // lịch sử (tránh "duplicate event" ở đúng chỗ user hỏi).
     if (created) {
-      await JournalTransactionHistory.create(
-        {
-          historyTransactionTypeId: params.historyTransactionTypeId,
-          journalTransactionId: journalTransaction.id,
-          transactionHash: params.transactionHash ?? null,
-          journalTransactionState: params.journalTransactionState,
-          transactionStateId: params.transactionStateId ?? null,
-          createdBy: params.createdBy ?? null,
-        },
-        { transaction },
+      await this.historyRepository.record(
+        { journalTransaction, historyTransactionTypeId: HISTORY_EVENT_TYPE.CREATED, createdBy: params.createdBy },
+        transaction,
       );
     }
 
     return { journalTransaction, created };
   }
 
-  async getLatestStateId(journalTransactionId: number, transaction: Transaction): Promise<string | null> {
-    const latest = await JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction });
+  /**
+   * Quyết định 1 lệnh chuyển state là hợp lệ, trùng lặp hay sai thứ tự.
+   *
+   * - Có `expectedStateSequence` -> FSM CHẶT: target phải đúng là bước kế tiếp trong
+   *   chuỗi; target cũ hơn/bằng hiện tại là replay; còn lại (bỏ bước, không thuộc chuỗi)
+   *   là INVALID.
+   * - Không có -> chỉ guard rank đơn giản: target <= hiện tại là replay.
+   */
+  private evaluateTransition(currentStateId: number | null, targetStateId: number | undefined, sequence?: readonly number[]): TransitionVerdict {
+    if (targetStateId == null) {
+      return 'APPLY';
+    }
 
-    return latest?.journalTransactionState ?? null;
+    if (sequence) {
+      const currentIndex = currentStateId != null ? sequence.indexOf(currentStateId) : -1;
+      const targetIndex = sequence.indexOf(targetStateId);
+
+      if (targetIndex !== -1 && targetIndex <= currentIndex) {
+        return 'REPLAY';
+      }
+
+      return targetIndex === currentIndex + 1 ? 'APPLY' : 'INVALID';
+    }
+
+    if (currentStateId != null && (TRANSACTION_STATE_RANK[targetStateId] ?? -Infinity) <= (TRANSACTION_STATE_RANK[currentStateId] ?? -Infinity)) {
+      return 'REPLAY';
+    }
+
+    return 'APPLY';
   }
 
   /**
-   * Chuyển trạng thái JournalTransaction.
+   * Chuyển trạng thái JournalTransaction + ghi `journal_transaction_history`.
    *
-   * Khoá row bằng SELECT ... FOR UPDATE để 2 event advance cùng lúc cho
-   * cùng 1 journal luôn serialize qua nhau (không có 2 transaction cùng
-   * đọc "state hiện tại" rồi cùng ghi đè).
-   *
-   * Trả về `outcome` thay vì chỉ trả JournalTransaction để caller (Flow)
-   * phân biệt được 3 trường hợp và xử lý đúng:
-   *   - APPLIED: state vừa được tiến đúng 1 bước hợp lệ, đã ghi history.
-   *   - REPLAYED_NOOP: duplicate/late event (target <= state hiện tại, hoặc
-   *     journal đã ở state kết thúc) — KHÔNG có gì thay đổi, an toàn bỏ qua.
-   *   - REJECTED_INVALID_TRANSITION: (chỉ xảy ra khi có truyền
-   *     `expectedStateSequence`) target bỏ bước / không thuộc chuỗi hợp lệ —
-   *     journal đã bị chuyển sang CANCELLED_OR_EXPIRED NGAY TRONG LẦN GỌI
-   *     NÀY. Caller (vd WithdrawFlow) cần tự hoàn tiền lại cho client ở các
-   *     bucket đã lỡ ghi nhận trước đó — repository này không biết gì về
-   *     Book/posting nên không tự hoàn tiền được.
+   * Khoá row bằng SELECT ... FOR UPDATE để 2 event advance cùng lúc cho cùng 1 journal
+   * luôn serialize qua nhau. Trả về `outcome` (xem JournalTransitionOutcome) để caller
+   * phân biệt đúng 3 trường hợp; repository này không biết gì về Book/posting nên với
+   * REJECTED_INVALID_TRANSITION, việc hoàn reserve là của caller (LedgerPipeline.transition).
    */
-  async updateJournalTransaction(params: any, transaction: Transaction): Promise<any> {
+  async updateJournalTransaction(params: UpdateJournalTransactionParams, transaction: Transaction): Promise<UpdateJournalTransactionResult> {
     const journalTransaction = await JournalTransaction.findByPk(params.journalTransactionId, { transaction, lock: transaction.LOCK.UPDATE });
 
     if (!journalTransaction) {
       throw new NotFoundError('JournalTransaction', params.journalTransactionId);
     }
 
-    if (TERMINAL_STATES.has(journalTransaction.journalTransactionState)) {
+    if (TERMINAL_JOURNAL_TRANSACTION_STATES.has(journalTransaction.journalTransactionState)) {
       return { journalTransaction, outcome: 'REPLAYED_NOOP' };
     }
 
-    const currentStateId = journalTransaction.transactionStateId;
+    const verdict = this.evaluateTransition(journalTransaction.transactionStateId, params.targetTransactionStateId, params.expectedStateSequence);
 
-    if (params.expectedStateSequence && params.targetTransactionStateId != null) {
-      // FSM CHẶT: target BẮT BUỘC phải đúng là bước kế tiếp trong chuỗi
-      // `expectedStateSequence` — không được bỏ bước, không được lộn xộn.
-      const sequence = params.expectedStateSequence;
-      const currentIndex = currentStateId != null ? sequence.indexOf(currentStateId) : -1;
-      const targetIndex = sequence.indexOf(params.targetTransactionStateId);
-
-      if (targetIndex !== -1 && targetIndex <= currentIndex) {
-        // Đã áp dụng rồi (duplicate) hoặc target là 1 bước cũ hơn hiện tại
-        // (event đến trễ) -> replay, bỏ qua an toàn.
-        return { journalTransaction, outcome: 'REPLAYED_NOOP' };
-      }
-
-      if (targetIndex !== currentIndex + 1) {
-        // SAI THỨ TỰ / BỎ BƯỚC / target không thuộc chuỗi hợp lệ của flow
-        // này -> REJECT TOÀN BỘ journal ngay lập tức, bất kể
-        // completeJournal/cancelJournal truyền vào là gì.
-        journalTransaction.journalTransactionState = JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED;
-        journalTransaction.updatedDate = new Date();
-        journalTransaction.updatedBy = params.updatedBy ?? null;
-
-        await journalTransaction.save({ transaction });
-
-        await JournalTransactionHistory.create(
-          {
-            historyTransactionTypeId: HISTORY_EVENT_TYPE.REJECTED_INVALID_TRANSITION,
-            journalTransactionId: journalTransaction.id,
-            transactionHash: journalTransaction.transactionHash,
-            journalTransactionState: JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED,
-            // Giữ nguyên state CHI TIẾT hợp lệ CUỐI CÙNG (không nhảy sang
-            // target sai) — đây chính là bucket mà caller cần dùng để tính
-            // hoàn tiền lại cho client.
-            transactionStateId: currentStateId,
-            createdBy: params.updatedBy ?? null,
-          },
-          { transaction },
-        );
-
-        return { journalTransaction, outcome: 'REJECTED_INVALID_TRANSITION' };
-      }
-      // targetIndex === currentIndex + 1 -> đúng bước kế tiếp, rơi xuống nhánh APPLIED bên dưới.
-    } else if (
-      params.targetTransactionStateId != null &&
-      currentStateId != null &&
-      (TRANSACTION_STATE_RANK[params.targetTransactionStateId] ?? -Infinity) <= (TRANSACTION_STATE_RANK[currentStateId] ?? -Infinity)
-    ) {
-      // Không có expectedStateSequence (Deposit/Stake) -> chỉ áp dụng guard
-      // rank đơn giản: target <= hiện tại thì coi là replay, bỏ qua.
+    if (verdict === 'REPLAY') {
       return { journalTransaction, outcome: 'REPLAYED_NOOP' };
     }
 
-    journalTransaction.transactionHash = params.transactionHash ?? journalTransaction.transactionHash ?? null;
+    if (verdict === 'INVALID') {
+      // Reject TOÀN BỘ journal, bất kể caller yêu cầu state nào. Giữ nguyên state chi
+      // tiết hợp lệ CUỐI CÙNG (không nhảy sang target sai) — đó là bucket caller cần
+      // để tính hoàn tiền.
+      await this.save(journalTransaction, { journalTransactionState: JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED }, params.updatedBy, transaction);
+      await this.historyRepository.record(
+        { journalTransaction, historyTransactionTypeId: HISTORY_EVENT_TYPE.REJECTED_INVALID_TRANSITION, createdBy: params.updatedBy },
+        transaction,
+      );
 
-    if (params.targetTransactionStateId != null) {
-      journalTransaction.transactionStateId = params.targetTransactionStateId;
+      return { journalTransaction, outcome: 'REJECTED_INVALID_TRANSITION' };
     }
 
-    if (params.completeJournal) {
-      journalTransaction.journalTransactionState = JOURNAL_TRANSACTION_STATE.COMPLETED;
-    } else if (params.cancelJournal) {
-      journalTransaction.journalTransactionState = JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED;
-    }
-
-    journalTransaction.updatedDate = new Date();
-    journalTransaction.updatedBy = params.updatedBy ?? null;
-
-    await journalTransaction.save({ transaction });
-
-    await JournalTransactionHistory.create(
+    await this.save(
+      journalTransaction,
       {
-        historyTransactionTypeId: params.historyTransactionTypeId,
-        journalTransactionId: journalTransaction.id,
-        transactionHash: journalTransaction.transactionHash,
-        journalTransactionState: params.journalTransactionState,
+        transactionHash: params.transactionHash ?? journalTransaction.transactionHash,
         transactionStateId: params.targetTransactionStateId ?? journalTransaction.transactionStateId,
-        createdBy: params.updatedBy ?? null,
+        journalTransactionState: params.journalTransactionState ?? journalTransaction.journalTransactionState,
       },
-      { transaction },
+      params.updatedBy,
+      transaction,
+    );
+    await this.historyRepository.record(
+      { journalTransaction, historyTransactionTypeId: HISTORY_EVENT_TYPE.STATE_ADVANCED, createdBy: params.updatedBy },
+      transaction,
     );
 
     return { journalTransaction, outcome: 'APPLIED' };
+  }
+
+  private async save(
+    journalTransaction: JournalTransaction,
+    changes: Partial<Pick<JournalTransaction, 'transactionHash' | 'transactionStateId' | 'journalTransactionState'>>,
+    updatedBy: number | undefined,
+    transaction: Transaction,
+  ): Promise<void> {
+    Object.assign(journalTransaction, changes);
+    journalTransaction.updatedDate = new Date();
+    journalTransaction.updatedBy = updatedBy ?? null;
+
+    await journalTransaction.save({ transaction });
   }
 }

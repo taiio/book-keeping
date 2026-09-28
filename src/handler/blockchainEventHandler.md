@@ -223,10 +223,10 @@ and only sends valid transaction events to this handler.
 
 Therefore, this handler must NOT:
 
-* re-detect whether the blockchain data is a transaction;
-* perform generic transaction discovery;
-* ignore the event simply because there is no existing system transaction;
-* create accounting before classifying the transaction.
+- re-detect whether the blockchain data is a transaction;
+- perform generic transaction discovery;
+- ignore the event simply because there is no existing system transaction;
+- create accounting before classifying the transaction.
 
 Instead, the handler must classify every received blockchain transaction
 into a supported transaction flow.

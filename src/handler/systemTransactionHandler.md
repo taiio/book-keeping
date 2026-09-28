@@ -6,17 +6,17 @@
 
 Supported transaction types:
 
-* `WITHDRAW`
-* `STAKE`
-* `UNSTAKE`
-* `RESTAKE`
+- `WITHDRAW`
+- `STAKE`
+- `UNSTAKE`
+- `RESTAKE`
 
 Do **not** create separate top-level handlers such as:
 
-* `handleWithdraw()`
-* `handleStake()`
-* `handleUnstake()`
-* `handleRestake()`
+- `handleWithdraw()`
+- `handleStake()`
+- `handleUnstake()`
+- `handleRestake()`
 
 These transaction types share the same lifecycle. Reuse the generic transaction flow as much as possible.
 
@@ -46,8 +46,8 @@ SENT        ──► REJECTED
 
 `REJECTED` and `FAILED` have different meanings.
 
-* `REJECTED`: system/business/provider processing rejected the transaction.
-* `FAILED`: blockchain execution failed after blockchain processing.
+- `REJECTED`: system/business/provider processing rejected the transaction.
+- `FAILED`: blockchain execution failed after blockchain processing.
 
 Blockchain confirmation and blockchain failure are handled by `blockchainEventHandler`.
 

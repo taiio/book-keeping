@@ -1,6 +1,6 @@
 export const TRANSACTION_STATE = {
-  // please dont remove, we need to this record. this record support the book purpose is external blockchian.
-    NOT_APPLICABLE: {
+  // Please don't remove: this record supports the EXTERNAL blockchain book, which has no detailed state.
+  NOT_APPLICABLE: {
     id: null,
     code: null,
     name: 'Not Applicable',
@@ -43,23 +43,40 @@ export const TRANSACTION_STATE = {
   },
 } as const;
 
-export type TransactionStateKey = keyof typeof TRANSACTION_STATE;
+/**
+ * Chuỗi state hợp lệ của 1 transaction, theo đúng thứ tự vòng đời — KHÔNG được bỏ bước.
+ * Dùng cho FSM chặt ở JournalTransactionRepository (`expectedStateSequence`) và
+ * là nguồn duy nhất để suy ra `TRANSACTION_STATE_RANK`.
+ */
+export const TRANSACTION_STATE_SEQUENCE: readonly number[] = [
+  TRANSACTION_STATE.AUTHORIZING.id,
+  TRANSACTION_STATE.AUTHORIZED.id,
+  TRANSACTION_STATE.SENT.id,
+  TRANSACTION_STATE.CONFIRMING.id,
+  TRANSACTION_STATE.CONFIRMED.id,
+];
 
 /**
- * Rank tường minh cho từng transaction state, dùng để so sánh "state nào
- * đứng trước/sau state nào" (guard monotonic khi advance một journal).
+ * Rank của từng state (vị trí trong `TRANSACTION_STATE_SEQUENCE`), dùng để so sánh
+ * "state nào đứng trước/sau state nào" (guard monotonic khi advance một journal).
  *
- * Cố tình khai báo tường minh thay vì dùng thẳng `TRANSACTION_STATE.X.id`
- * làm rank: id là khoá định danh ổn định cho FK/DB, còn thứ tự vòng đời là
- * một khái niệm nghiệp vụ riêng — nếu sau này có ai chèn thêm 1 state mới
- * với id không nằm đúng vị trí tuần tự (vd thêm "REJECTED" với id = 6 nhưng
- * đứng trước SENT về mặt nghiệp vụ), guard vẫn đúng vì rank được khai báo
- * độc lập với id.
+ * Rank được suy ra từ THỨ TỰ khai báo của chuỗi state chứ không lấy thẳng `id`:
+ * id là khoá định danh ổn định cho FK/DB, còn thứ tự vòng đời là một khái niệm
+ * nghiệp vụ riêng — chèn thêm state mới với id không tuần tự vẫn không làm sai guard.
  */
-export const TRANSACTION_STATE_RANK: Record<number, number> = {
-  [TRANSACTION_STATE.AUTHORIZING.id]: 0,
-  [TRANSACTION_STATE.AUTHORIZED.id]: 1,
-  [TRANSACTION_STATE.SENT.id]: 2,
-  [TRANSACTION_STATE.CONFIRMING.id]: 3,
-  [TRANSACTION_STATE.CONFIRMED.id]: 4,
-};
+export const TRANSACTION_STATE_RANK: Readonly<Record<number, number>> = Object.fromEntries(
+  TRANSACTION_STATE_SEQUENCE.map((stateId, index) => [stateId, index]),
+);
+
+/** Tra ngược code của state theo id (bỏ qua NOT_APPLICABLE vì id/code = null). */
+export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Object.fromEntries(
+  Object.values(TRANSACTION_STATE)
+    .filter((state) => state.id !== null)
+    .map((state) => [state.id, state.code]),
+) as Record<number, string>;
+
+/**
+ * State mà 1 system transaction còn có thể bị FAILED từ blockchain
+ * (biên "SENT/CONFIRMING -> FAILED" của design doc).
+ */
+export const TRANSACTION_STATE_IDS_FAILABLE_BY_BLOCKCHAIN: readonly number[] = [TRANSACTION_STATE.SENT.id, TRANSACTION_STATE.CONFIRMING.id];
