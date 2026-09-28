@@ -2,27 +2,39 @@
  * Defines the types of events recorded in the history tables
  * (`journal_transaction_history` and `book_history`).
  *
- * These values describe WHAT HAPPENED, not what type of transaction it is. They
- * keep an audit trail of when a journal/book was created, when a journal state
- * changed, and when ledger postings were applied to books.
+ * These values describe WHAT HAPPENED, not the current state of a
+ * transaction, journal, or book.
  *
  * CREATED:
- * The initial creation of a record. Written to `journal_transaction_history`
- * when a JournalTransaction is created, and to `book_history` (amount = 0,
- * no posting) when a Book is created.
+ * The initial creation of a record.
+ *
+ * - `journal_transaction_history`: written when a JournalTransaction is created.
+ * - `book_history`: written when a Book is created, with amount = 0 and no posting.
  *
  * STATE_ADVANCED:
- * A state transition during the journal lifecycle, e.g. AUTHORIZING -> AUTHORIZED
- * -> SENT -> CONFIRMING -> CONFIRMED, or a move to CANCELLED_OR_EXPIRED. Written
- * to `journal_transaction_history` only.
+ * A valid state transition during the journal transaction lifecycle.
+ *
+ * Examples:
+ * AUTHORIZING -> AUTHORIZED
+ * AUTHORIZED  -> SENT
+ * SENT        -> CONFIRMING
+ * CONFIRMING  -> CONFIRMED
+ *
+ * This event is written to `journal_transaction_history` only.
  *
  * POSTING_APPLIED:
- * A BookPosting was applied to a Book and changed its balance. Written to
- * `book_history` only, linked to the posting through `book_posting_id`.
+ * A BookPosting was successfully applied to a Book and changed its balance.
+ *
+ * This event is written to `book_history` only and is linked to the
+ * corresponding posting through `book_posting_id`.
  *
  * REJECTED_INVALID_TRANSITION:
- * A state transition that skipped a step / was out of sequence. The journal is
- * cancelled and this event is written to `journal_transaction_history` only.
+ * An attempted state transition violated the defined transaction lifecycle,
+ * such as skipping a required state or moving to an invalid state.
+ *
+ * This event is written to `journal_transaction_history` for audit purposes.
+ * The JournalTransaction may transition to REJECTED according to the
+ * journal transaction state rules.
  */
 export const HISTORY_EVENT_TYPE = {
   CREATED: 1,
@@ -30,3 +42,5 @@ export const HISTORY_EVENT_TYPE = {
   POSTING_APPLIED: 3,
   REJECTED_INVALID_TRANSITION: 4,
 } as const;
+
+export type HistoryEventType = (typeof HISTORY_EVENT_TYPE)[keyof typeof HISTORY_EVENT_TYPE];

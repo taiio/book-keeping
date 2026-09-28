@@ -46,7 +46,7 @@ DROP TABLE public.journal_transaction_history CASCADE;
 
 DROP TABLE public.transaction_state CASCADE;
 
-`
+`;
 
 async function main(): Promise<void> {
   try {

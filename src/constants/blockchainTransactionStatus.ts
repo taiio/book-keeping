@@ -1,12 +1,15 @@
 import { TRANSACTION_STATE } from './transactionState';
 
 /**
- * Trạng thái của 1 blockchain event. CONFIRMING/CONFIRMED dùng lại đúng code của
- * TRANSACTION_STATE; FAILED chỉ tồn tại ở phía blockchain (phía ledger được biểu
- * diễn bằng JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED).
+ * Status of a blockchain transaction.
+ *
+ * CONFIRMING and CONFIRMED reuse the corresponding transaction state codes.
+ * FAILED represents a blockchain execution failure.
  */
 export const BLOCKCHAIN_TRANSACTION_STATUS = {
   CONFIRMING: TRANSACTION_STATE.CONFIRMING.code,
   CONFIRMED: TRANSACTION_STATE.CONFIRMED.code,
-  FAILED: 'FAILED',
+  FAILED: TRANSACTION_STATE.FAILED.code,
 } as const;
+
+export type BlockchainTransactionStatus = (typeof BLOCKCHAIN_TRANSACTION_STATUS)[keyof typeof BLOCKCHAIN_TRANSACTION_STATUS];

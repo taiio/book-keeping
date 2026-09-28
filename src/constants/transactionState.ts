@@ -1,5 +1,7 @@
 export const TRANSACTION_STATE = {
-  // Please don't remove: this record supports the EXTERNAL blockchain book, which has no detailed state.
+  /**
+   * Supports the EXTERNAL blockchain book, which has no detailed transaction state.
+   */
   NOT_APPLICABLE: {
     id: null,
     code: null,
@@ -7,6 +9,7 @@ export const TRANSACTION_STATE = {
     description: 'No transaction state applies to this record.',
   },
 
+  // Happy-path states
   AUTHORIZING: {
     id: 1,
     code: 'AUTHORIZING',
@@ -32,51 +35,67 @@ export const TRANSACTION_STATE = {
     id: 4,
     code: 'CONFIRMING',
     name: 'Confirming',
-    description: 'The transaction has been submitted and is waiting for blockchain confirmations.',
+    description: 'The transaction is waiting for blockchain confirmations.',
   },
 
   CONFIRMED: {
     id: 5,
     code: 'CONFIRMED',
     name: 'Confirmed',
-    description: 'The transaction has received sufficient blockchain confirmations and is considered final.',
+    description: 'The transaction has received sufficient blockchain confirmations.',
+  },
+
+  // Terminal / exception states
+  REJECTED: {
+    id: 90,
+    code: 'REJECTED',
+    name: 'Rejected',
+    description: 'The transaction was rejected before blockchain submission.',
+  },
+
+  FAILED: {
+    id: 91,
+    code: 'FAILED',
+    name: 'Failed',
+    description: 'The transaction failed after processing started.',
   },
 } as const;
 
-/**
- * Bucket của từng state: mỗi state của system transaction có 1 book CUSTODY riêng, và VÀO state nào thì post
- * bucket(state trước) -> bucket(state đó) — kể cả AUTHORIZING (sau khi kiểm tra amount + fee đủ).
- *   CONFIRMED  = Available    AUTHORIZING = Reserved     AUTHORIZED = Authorized
- *   SENT       = Sent         CONFIRMING  = Confirming
- * DEPOSIT dùng lại bucket Confirming (không có book Pending riêng).
- */
+type NonNull<T> = Exclude<T, null>;
+
+export type TransactionStateId = NonNull<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['id']>;
+
+export type TransactionStateCode = NonNull<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['code']>;
 
 /**
- * Chuỗi state hợp lệ của 1 transaction, theo đúng thứ tự vòng đời — KHÔNG được bỏ bước.
- * Dùng cho FSM chặt ở JournalTransactionRepository (`expectedStateSequence`) và
- * là nguồn duy nhất để suy ra `TRANSACTION_STATE_RANK`.
+ * Happy-path lifecycle.
+ *
+ * States must be entered in this exact order.
+ * Exception states such as REJECTED and FAILED are not part of this sequence.
  */
-export const TRANSACTION_STATE_SEQUENCE: readonly number[] = [
+export const TRANSACTION_STATE_SEQUENCE = [
   TRANSACTION_STATE.AUTHORIZING.id,
   TRANSACTION_STATE.AUTHORIZED.id,
   TRANSACTION_STATE.SENT.id,
   TRANSACTION_STATE.CONFIRMING.id,
   TRANSACTION_STATE.CONFIRMED.id,
-];
+] as const;
 
 /**
- * Rank của từng state (vị trí trong `TRANSACTION_STATE_SEQUENCE`), dùng để so sánh
- * "state nào đứng trước/sau state nào" (guard monotonic khi advance một journal).
+ * Rank of each happy-path state.
  *
- * Rank được suy ra từ THỨ TỰ khai báo của chuỗi state chứ không lấy thẳng `id`:
- * id là khoá định danh ổn định cho FK/DB, còn thứ tự vòng đời là một khái niệm
- * nghiệp vụ riêng — chèn thêm state mới với id không tuần tự vẫn không làm sai guard.
+ * Used to compare lifecycle order and enforce that a journal
+ * transaction cannot skip a happy-path state.
  */
 export const TRANSACTION_STATE_RANK: Readonly<Record<number, number>> = Object.fromEntries(
   TRANSACTION_STATE_SEQUENCE.map((stateId, index) => [stateId, index]),
 );
 
-/** Tra ngược code của state theo id (bỏ qua NOT_APPLICABLE vì id/code = null). */
+/**
+ * Lookup transaction state code by state ID.
+ *
+ * NOT_APPLICABLE is excluded because its ID and code are null.
+ */
 export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Object.fromEntries(
   Object.values(TRANSACTION_STATE)
     .filter((state) => state.id !== null)
@@ -84,7 +103,29 @@ export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Ob
 ) as Record<number, string>;
 
 /**
- * State mà 1 system transaction còn có thể bị FAILED từ blockchain
- * (biên "SENT/CONFIRMING -> FAILED" của design doc).
+ * States that can transition to FAILED due to blockchain processing.
  */
 export const TRANSACTION_STATE_IDS_FAILABLE_BY_BLOCKCHAIN: readonly number[] = [TRANSACTION_STATE.SENT.id, TRANSACTION_STATE.CONFIRMING.id];
+
+/**
+ * Allowed state transitions.
+ *
+ * REJECTED represents an explicit business/user/system rejection
+ * before blockchain submission.
+ *
+ * FAILED represents a blockchain/processing failure after
+ * blockchain processing has started.
+ */
+export const TRANSACTION_STATE_TRANSITIONS = {
+  AUTHORIZING: [TRANSACTION_STATE.AUTHORIZED.code, TRANSACTION_STATE.REJECTED.code],
+
+  AUTHORIZED: [TRANSACTION_STATE.SENT.code, TRANSACTION_STATE.REJECTED.code],
+
+  SENT: [TRANSACTION_STATE.CONFIRMING.code, TRANSACTION_STATE.FAILED.code],
+
+  CONFIRMING: [TRANSACTION_STATE.CONFIRMED.code, TRANSACTION_STATE.FAILED.code],
+
+  CONFIRMED: [],
+  REJECTED: [],
+  FAILED: [],
+} as const;

@@ -1,5 +1,6 @@
-import type { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE } from '../constants';
-import type { JournalTransaction } from '../models';
+import type { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+
+import type { TransactionStateId } from '../constants/transactionState';
 
 // ----------------------------------------------------------------------
 // Account / fee items
@@ -33,91 +34,113 @@ export interface FeeItem {
 }
 
 // ----------------------------------------------------------------------
-// State types — suy ra trực tiếp từ constants, KHÔNG khai báo lại bằng tay
+// State types
 // ----------------------------------------------------------------------
 
 export type JournalTransactionStateValue = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
 
-/**
- * Code của các state chi tiết (AUTHORIZING | AUTHORIZED | SENT | CONFIRMING | CONFIRMED).
- * Việc bị từ chối / thất bại KHÔNG phải là 1 state chi tiết mà được biểu diễn bằng
- * `JournalTransactionStateValue` = CANCELLED_OR_EXPIRED.
- */
-export type TransactionStateCode = NonNullable<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['code']>;
-
 // ----------------------------------------------------------------------
-// System transactions (WITHDRAW / STAKE / UNSTAKE / RESTAKE)
+// System transactions
 // ----------------------------------------------------------------------
 
 export interface TransactionBase {
+  /**
+   * Idempotency token of the current business operation.
+   *
+   * Format:
+   *
+   *   transactionUuid:transactionType:transactionState:index
+   */
   idempotencyToken: string;
+
+  /**
+   * Original business transaction UUID.
+   */
   uuidToken: string;
 }
 
 export interface Withdraw extends TransactionBase {
-  type: 'WITHDRAW';
+  type: typeof TRANSACTION_TYPE.WITHDRAW;
+
   sender: AccountItem[];
+
   recipient: AccountItem[];
+
   fee: FeeItem;
 }
 
 export interface Stake extends TransactionBase {
-  type: 'STAKE';
+  type: typeof TRANSACTION_TYPE.STAKE;
+
   sender: AccountItem;
+
   pool: {
     poolId: string;
     address?: string;
   };
+
   fee: FeeItem;
 }
 
 export interface Unstake extends TransactionBase {
-  type: 'UNSTAKE';
+  type: typeof TRANSACTION_TYPE.UNSTAKE;
+
   sender: AccountItem;
+
   pool: {
     poolId: string;
     address?: string;
   };
+
   recipient: AccountItem[];
+
   fee: FeeItem;
 }
 
 export interface Restake extends TransactionBase {
-  type: 'RESTAKE';
+  type: typeof TRANSACTION_TYPE.RESTAKE;
+
   sender: AccountItem;
+
   fromPool: {
     poolId: string;
     address?: string;
   };
+
   toPool: {
     poolId: string;
     address?: string;
   };
+
   fee: FeeItem;
 }
 
 export type Transaction = Withdraw | Stake | Unstake | Restake;
 
 // ----------------------------------------------------------------------
-// Transaction entities (payload gốc + trạng thái hiện tại của journal)
+// Transaction entities
 // ----------------------------------------------------------------------
 
 export interface TransactionEntityBase {
   id: string;
 
   idempotencyToken: string;
+
   uuidToken: string;
 
-  /** State chi tiết hiện tại (hoặc cuối cùng hợp lệ nếu journal đã bị huỷ). */
-  state: TransactionStateCode;
+  /**
+   * Current transaction state.
+   */
+  state: TransactionStateId;
 
-  /** ACTIVE / COMPLETED / CANCELLED_OR_EXPIRED — CANCELLED_OR_EXPIRED nghĩa là bị REJECTED hoặc FAILED. */
   journalTransactionState: JournalTransactionStateValue;
 
   transactionHash?: string;
+
   blockNumber?: number;
 
   errorCode?: string | number;
+
   errorMessage?: string;
 
   consumedFee?: {
@@ -127,32 +150,22 @@ export interface TransactionEntityBase {
   };
 
   createdAt: Date;
+
   updatedAt: Date;
 }
 
 export type TransactionEntity = Transaction & TransactionEntityBase;
 
 /**
- * DEPOSIT không do hệ thống khởi tạo nên không nằm trong union `Transaction`;
- * nó chỉ tồn tại dưới dạng entity do BlockchainEventHandler tạo ra.
+ * DEPOSIT is not created by the system transaction handler.
+ *
+ * It is created from a blockchain event after the listener
+ * identifies a system-owned deposit address.
  */
 export interface DepositTransactionEntity extends TransactionEntityBase {
-  type: 'DEPOSIT';
+  type: typeof TRANSACTION_TYPE.DEPOSIT;
+
   recipient: AccountItem;
 }
 
 export type BlockchainDrivenEntity = TransactionEntity | DepositTransactionEntity;
-
-// ----------------------------------------------------------------------
-// SystemTransactionHandler results
-// ----------------------------------------------------------------------
-
-export type AuthorizePhase = 'AUTHORIZED' | 'REJECTED' | 'REPLAYED';
-
-/** Kết quả vòng AUTHORIZING -> AUTHORIZED của SystemTransactionHandler (chạy trong 1 DB transaction). `AUTHORIZED` = sẵn sàng gọi provider. */
-export interface AuthorizeResult {
-  phase: AuthorizePhase;
-  /** Bản ghi journal MỚI NHẤT sau vòng authorize (đã phản ánh state/hash vừa ghi). */
-  journalTransaction: JournalTransaction;
-  errorMessage?: string;
-}

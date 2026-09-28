@@ -387,7 +387,11 @@ export class LedgerPipeline {
     const external = locked.get(externalUnlocked.id)!;
 
     const [fromBook, toBook] =
-      phase === TRANSACTION_STATE.CONFIRMING.code ? [external, confirming] : phase === TRANSACTION_STATE.CONFIRMED.code ? [confirming, locked.get(available.id)!] : [confirming, external];
+      phase === TRANSACTION_STATE.CONFIRMING.code
+        ? [external, confirming]
+        : phase === TRANSACTION_STATE.CONFIRMED.code
+          ? [confirming, locked.get(available.id)!]
+          : [confirming, external];
 
     await this.applyMovement(
       {

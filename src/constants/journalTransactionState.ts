@@ -1,16 +1,21 @@
 export const JOURNAL_TRANSACTION_STATE = {
-  ACTIVE: 'ACTIVE',
-  COMPLETED: 'COMPLETED',
-  CANCELLED_OR_EXPIRED: 'CANCELLED_OR_EXPIRED',
+  ACTIVE: 1,
+  COMPLETED: 2,
+  FAILED: 3,
+  REJECTED: 4,
 } as const;
 
-/**
- * Các state coi là "kết thúc" (terminal). Một khi journal đã vào 1 trong 2
- * state này thì mọi lệnh update tiếp theo (kể cả state trùng, hay 1 event
- * bị gửi lại / đến trễ) đều là replay và phải là no-op — không được ghi
- * thêm history, không được đổi state ngược lại.
- */
-export const TERMINAL_JOURNAL_TRANSACTION_STATES: ReadonlySet<string> = new Set([
+export type JournalTransactionState = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
+
+export const TERMINAL_JOURNAL_TRANSACTION_STATES: ReadonlySet<JournalTransactionState> = new Set([
   JOURNAL_TRANSACTION_STATE.COMPLETED,
-  JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED,
+  JOURNAL_TRANSACTION_STATE.FAILED,
+  JOURNAL_TRANSACTION_STATE.REJECTED,
 ]);
+
+export const JOURNAL_TRANSACTION_STATE_TRANSITIONS = {
+  [JOURNAL_TRANSACTION_STATE.ACTIVE]: [JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.FAILED, JOURNAL_TRANSACTION_STATE.REJECTED],
+  [JOURNAL_TRANSACTION_STATE.COMPLETED]: [],
+  [JOURNAL_TRANSACTION_STATE.FAILED]: [],
+  [JOURNAL_TRANSACTION_STATE.REJECTED]: [],
+} as const;

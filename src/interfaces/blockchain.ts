@@ -1,10 +1,12 @@
 import type { BLOCKCHAIN_TRANSACTION_STATUS } from '../constants';
+import { BookPostingPurposeId } from '../constants/bookPostingPurpose';
 import type { Book } from '../models';
 import type { Transaction } from './transaction';
 
 export type BlockchainTransactionStatus = (typeof BLOCKCHAIN_TRANSACTION_STATUS)[keyof typeof BLOCKCHAIN_TRANSACTION_STATUS];
 
 export interface BlockchainSender {
+  idempotencyToken: string;
   address: string;
   assetTicker: string;
   quantity: string;
@@ -21,10 +23,11 @@ export interface DepositAccountIdentity {
 }
 
 export interface BlockchainRecipient {
+  idempotencyToken: string;
   address: string;
   assetTicker: string;
   quantity: string;
-  type: 'AMOUNT' | 'REWARD';
+  type: BookPostingPurposeId;
   /**
    * Chỉ cần khi địa chỉ nhận chưa có Book: có thì "Find / Create Deposit Book" tạo book mới,
    * không có thì deposit tới địa chỉ lạ vẫn bị từ chối (NotFoundError) vì không đủ dữ liệu để tạo book.

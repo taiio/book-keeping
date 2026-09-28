@@ -1,4 +1,5 @@
 # DEPOSIT
+
 ```
                          BLOCKCHAIN EVENT
                                 │
@@ -75,7 +76,6 @@
                Double Entry    Double Entry    Double Entry
 ```
 
-
 # DEPOSIT — FAILED
 
               CONFIRMING
@@ -93,9 +93,8 @@
                    │
                    │
                    ▼
+
 Update Journal Transaction to CANCELED_OR_REJECTED.
-
-
 
 # BLOCKCHAIN WITHDRAW EVENT
 
