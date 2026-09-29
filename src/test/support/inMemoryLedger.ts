@@ -53,16 +53,6 @@ export const BOOK = {
   custodyAuthorized: (assetTicker: string) => custody(TRANSACTION_STATE.AUTHORIZED.id, assetTicker),
   custodySent: (assetTicker: string) => custody(TRANSACTION_STATE.SENT.id, assetTicker),
   custodyConfirming: (assetTicker: string) => custody(TRANSACTION_STATE.CONFIRMING.id, assetTicker),
-  feeConfirming: (assetTicker: string) => ({
-    bookPurposeId: BOOK_PURPOSE.FEE_CONFIRMING_ACCOUNT.id,
-    transactionStateId: TRANSACTION_STATE.CONFIRMING.id,
-    assetTicker,
-  }),
-  feeRevenue: (assetTicker: string) => ({
-    bookPurposeId: BOOK_PURPOSE.FEE_REVENUE_ACCOUNT.id,
-    transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
-    assetTicker,
-  }),
   external: (assetTicker: string) => ({
     bookPurposeId: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id,
     transactionStateId: TRANSACTION_STATE.NOT_APPLICABLE.id,
@@ -91,15 +81,35 @@ class InMemoryTable {
   findByPk(id: number): Row | null {
     return this.rows.find((row) => row.id === id) ?? null;
   }
+
+  count(where: Row = {}): number {
+    return this.rows.filter((row) => Object.entries(where).every(([key, value]) => row[key] === value)).length;
+  }
+
+  findAllSorted(where: Row = {}): Row[] {
+    return this.rows.filter((row) => Object.entries(where).every(([key, value]) => row[key] === value)).sort((a, b) => a.id - b.id);
+  }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type OrderClause = [string, 'ASC' | 'DESC'][];
 
 function patchModel(model: unknown, table: InMemoryTable): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const patch = (name: string, impl: (...args: any[]) => unknown) => mock.method(model as any, name as any, impl as any);
 
-  patch('findOne', async ({ where }: { where?: Row } = {}) => table.find(where));
+  patch('findOne', async ({ where, order }: { where?: Row; order?: OrderClause } = {}) => {
+    const rows = table.findAllSorted(where);
+
+    if (order?.some(([field]) => field === 'id') && order.some(([, direction]) => direction === 'DESC')) {
+      return rows[rows.length - 1] ?? null;
+    }
+
+    return rows[0] ?? null;
+  });
   patch('findByPk', async (id: number) => table.findByPk(id));
   patch('create', async (values: Row) => table.insert(values));
+  patch('count', async ({ where }: { where?: Row } = {}) => table.count(where));
   patch('findOrCreate', async ({ where, defaults }: { where: Row; defaults?: Row }) => {
     const existing = table.find(where);
 
@@ -143,9 +153,9 @@ export function createTestLedger() {
     },
   };
 
-  const journalTransactionRepository = new JournalTransactionRepository(new JournalTransactionHistoryRepository());
   const bookRepository = new BookRepository(new BookHistoryRepository());
   const bookPostingRepository = new BookPostingRepository(bookRepository);
+  const journalTransactionRepository = new JournalTransactionRepository(new JournalTransactionHistoryRepository(), bookPostingRepository);
   const ledgerPipeline = new LedgerPipeline(bookRepository, bookPostingRepository, journalTransactionRepository);
 
   return {
@@ -156,7 +166,7 @@ export function createTestLedger() {
     /** Tạo sẵn book custody ở bucket CONFIRMED (số dư khả dụng) — điểm bắt đầu của mọi test. */
     seedCustodyBook({ assetTicker = TEST_ACCOUNT.assetTicker, amount, address }: SeedCustodyBookParams): Row {
       return tables.books.insert({
-        name: `${assetTicker} custody`,
+        name: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.code,
         ...TEST_ACCOUNT,
         ...BOOK.custodyAvailable(assetTicker),
         amount,

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { BLOCKCHAIN_TRANSACTION_STATUS, BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 
 import type { BlockchainMessagePayload } from '../interfaces';
@@ -20,8 +21,9 @@ import { BookRepository } from '../repositories/Book';
 
 // Mỗi lần chạy dùng hash riêng — deposit idempotent theo (hash, address, ticker) nên chạy lại cùng hash sẽ chỉ là replay.
 const RUN_ID = Date.now();
-const CONFIRMED_HASH = `0xdeposit-db-confirmed-${RUN_ID}`;
-const FAILED_HASH = `0xdeposit-db-failed-${RUN_ID}`;
+const CONFIRMED_HASH = crypto.randomBytes(32).toString('hex'); // deposit đầu tiên, hash cố định để test CONFIRMED
+const FAILED_HASH = crypto.randomBytes(32).toString('hex'); // deposit khác, hash khác, để test FAILED
+const idempotencyToken = crypto.randomUUID(); // token bất biến cho cả vòng đời deposit này
 
 const DEPOSIT_ADDRESS = 'addr-deposit-db-1';
 const ASSET_TICKER = 'BTC';
@@ -40,7 +42,7 @@ function createDepositEvent(transactionHash: string, status: BlockchainMessagePa
   return {
     transactionHash,
     status,
-
+    idempotencyToken,
     senders: [
       {
         address: 'addr-external-sender',

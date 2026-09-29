@@ -4,11 +4,6 @@ import { autoInjectable, singleton } from 'tsyringe';
 import { RecordJournalTransactionHistoryParams } from '../interfaces';
 import { JournalTransactionHistory } from '../models';
 
-/**
- * Nơi DUY NHẤT ghi `journal_transaction_history`. Mỗi dòng là 1 snapshot của
- * JournalTransaction TẠI THỜI ĐIỂM sự kiện xảy ra (state chi tiết, state tổng, hash) —
- * không phải cache, nên không đổi khi journal tiến tiếp sau đó.
- */
 @singleton()
 @autoInjectable()
 export class JournalTransactionHistoryRepository {
@@ -21,7 +16,7 @@ export class JournalTransactionHistoryRepository {
         journalTransactionId: journalTransaction.id,
         transactionHash: journalTransaction.transactionHash,
         journalTransactionState: journalTransaction.journalTransactionState,
-        transactionStateId: journalTransaction.transactionStateId,
+        transactionStateId: params.transactionStateId ?? null,
         createdBy: params.createdBy ?? null,
       },
       { transaction },

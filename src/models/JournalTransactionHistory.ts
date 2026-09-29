@@ -67,17 +67,16 @@ export class JournalTransactionHistory extends Model {
 
   @Column({
     field: 'journal_transaction_state',
-    type: DataType.ENUM(JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED),
+    type: DataType.INTEGER,
     allowNull: false,
+    validate: {
+      isIn: [
+        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
+      ],
+    },
   })
   declare journalTransactionState: JournalTransactionStateValue;
 
-  /**
-   * State chi tiết TẠI THỜI ĐIỂM sự kiện này xảy ra (snapshot, không phải
-   * cache) — vd khi 1 withdraw advance sang SENT, dòng history này lưu lại
-   * đúng SENT, bất kể sau đó journal có tiến tiếp tới đâu. Khác với cột
-   * cùng tên bên JournalTransaction (luôn là giá trị mới nhất).
-   */
   @ForeignKey(() => TransactionState)
   @Column({
     field: 'transaction_state_id',

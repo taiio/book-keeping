@@ -113,6 +113,11 @@ export class BookPosting extends Model {
   })
   declare assetTypeId: number | null;
 
+  // Không có cột transaction_state_id ở đây: KHÔNG cache state lên BookPosting. "Latest transaction state" của
+  // 1 journal được suy ra bằng cách lấy BookPosting MỚI NHẤT (order by id DESC) của journal đó, rồi đi qua
+  // bookId -> Book.transactionStateId (Book vốn đã có sẵn cột này) — xem
+  // BookPostingRepository.findLatestTransactionStateId.
+
   // ============================================================
   // Sequence
   // ============================================================

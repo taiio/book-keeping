@@ -12,7 +12,7 @@ function depositEvent(status: BlockchainMessagePayload['status']): BlockchainMes
   return {
     transactionHash: TRANSACTION_HASH,
     status,
-
+    idempotencyToken: 'deposit-debug-1',
     senders: [
       {
         address: 'addr-external-sender',

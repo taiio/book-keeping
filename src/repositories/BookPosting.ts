@@ -3,13 +3,9 @@ import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { CreateBookPostingParams } from '../interfaces';
-import { BookPosting } from '../models';
+import { Book, BookPosting } from '../models';
 import { BookRepository } from './Book';
 
-/**
- * Tạo BookPosting (idempotent theo `idempotencyToken`) và kéo theo update Book +
- * `book_history` (qua BookRepository.updateBook). Gọi lại cùng token là no-op.
- */
 @singleton()
 @autoInjectable()
 export class BookPostingRepository {
@@ -56,5 +52,21 @@ export class BookPostingRepository {
     );
 
     return posting;
+  }
+
+  async countByJournalTransactionId(journalTransactionId: number, transaction: Transaction): Promise<number> {
+    return BookPosting.count({ where: { journalTransactionId }, transaction });
+  }
+
+  async findLatestTransactionStateId(journalTransactionId: number, transaction: Transaction): Promise<number | null> {
+    const latestPosting = await BookPosting.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction });
+
+    if (!latestPosting) {
+      return null;
+    }
+
+    const book = await Book.findByPk(latestPosting.bookId, { transaction });
+
+    return book?.transactionStateId ?? null;
   }
 }

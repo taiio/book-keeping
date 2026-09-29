@@ -4,10 +4,6 @@ import { autoInjectable, singleton } from 'tsyringe';
 import { sequelize } from '../config/database';
 import { IUnitOfWork } from '../interfaces';
 
-/**
- * UnitOfWork bọc toàn bộ 1 "business command" trong đúng 1 DB transaction, để mọi
- * repository (JournalTransaction/Book/BookPosting + 2 bảng history) cùng commit hoặc cùng rollback.
- */
 @singleton()
 @autoInjectable()
 export class UnitOfWork implements IUnitOfWork {

@@ -12,29 +12,6 @@ export const BOOK_PURPOSE = {
     name: 'Blockchain External Account Book',
     description: 'Represents assets or accounts outside the custody ledger, such as external blockchain or settlement accounts.',
   },
-
-  //Temp: we don't use on this book.
-  // CLIENT_ASSET_ACCOUNT: {
-  //   id: 3,
-  //   code: 'CLIENT_ASSET_ACCOUNT',
-  //   name: 'Client Asset Account Book',
-  //   description: 'Represents the assets and balances owned by a client within the custody system.',
-  // },
-
-  // BLOCKCHAIN_CONTROL_ACCOUNT: {
-  //   id: 4,
-  //   code: 'BLOCKCHAIN_CONTROL_ACCOUNT',
-  //   name: 'Blockchain Control Account Book',
-  //   description: 'Represents the blockchain-side control balance used to reconcile and control assets held on blockchain networks.',
-  // },
-
-  // CUSTODY_CONTROL_ACCOUNT: {
-  //   id: 5,
-  //   code: 'CUSTODY_CONTROL_ACCOUNT',
-  //   name: 'Custody Control Account Book',
-  //   description:
-  //     'Represents assets temporarily held or controlled by the custodian, such as assets moved from a client account into a staking position.',
-  // },
 } as const;
 
 export type BookPurposeId = (typeof BOOK_PURPOSE)[keyof typeof BOOK_PURPOSE]['id'];

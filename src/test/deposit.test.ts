@@ -18,6 +18,7 @@ function depositEvent(
   return {
     transactionHash: TRANSACTION_HASH,
     status,
+    idempotencyToken: `deposit-${status}`,
     senders: [{ address: 'addr-external-sender', assetTicker: TEST_ACCOUNT.assetTicker, quantity: QUANTITY }],
     recipients: [{ address: DEPOSIT_ADDRESS, assetTicker: TEST_ACCOUNT.assetTicker, quantity: QUANTITY, type: 'AMOUNT', ...extra }],
   };
@@ -122,7 +123,7 @@ describe('DEPOSIT — lifecycle', () => {
     const failed = await ledger.blockchainEventHandler.handle(depositEvent(BLOCKCHAIN_TRANSACTION_STATUS.FAILED));
 
     assert.equal(failed.id, confirming.id);
-    assert.equal(failed.journalTransactionState, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED);
+    assert.equal(failed.journalTransactionState, JOURNAL_TRANSACTION_STATE.FAILED);
 
     assert.equal(ledger.amountOf(BOOK.custodyConfirming('BTC')), '0');
     assert.equal(ledger.amountOf(BOOK.external('BTC')), '0');

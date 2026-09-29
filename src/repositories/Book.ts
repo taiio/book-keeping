@@ -16,7 +16,6 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
-  /** Book nhận deposit = book custody ở bucket Available (CONFIRMED) gắn với địa chỉ — không nhầm với Reserved/Confirming/... */
   async findByDepositAddress(address: string, assetTicker: string, transaction: Transaction): Promise<Book | null> {
     return Book.findOne({
       where: {
@@ -29,10 +28,6 @@ export class BookRepository {
     });
   }
 
-  /**
-   * Get-or-create theo unique index của Book. Book mới tạo ra được ghi ngay 1 dòng
-   * `book_history` (CREATED, amount = 0) để lịch sử của book luôn có điểm bắt đầu.
-   */
   async getOrCreateBook(params: BookLegParams, transaction: Transaction): Promise<GetOrCreateBookResult> {
     const [book, created] = await Book.findOrCreate({
       where: {
@@ -82,7 +77,6 @@ export class BookRepository {
     return book;
   }
 
-  /** Khoá nhiều book theo thứ tự id tăng dần — bắt buộc để tránh deadlock khi nhiều transaction khoá chéo nhau. */
   async lockBooksInOrder(bookIds: number[], tx: Transaction): Promise<Map<number, Book>> {
     const uniqueSortedIds = Array.from(new Set(bookIds)).sort((a, b) => a - b);
     const result = new Map<number, Book>();
@@ -94,11 +88,6 @@ export class BookRepository {
     return result;
   }
 
-  /**
-   * Cập nhật số dư Book + ghi `book_history` (POSTING_APPLIED) trong cùng transaction.
-   * `book` PHẢI là bản ghi đã khoá. Chỉ book CUSTODY ở bucket CONFIRMED (available) mới
-   * không được âm; các bucket trung gian (Reserved/Authorized/Sent/Confirming, Fee) và external được phép âm/dương tự do.
-   */
   async updateBook(params: UpdateBookParams, transaction: Transaction): Promise<Book> {
     const { book, amountDelta, sequenceNo, bookPostingId, updatedBy } = params;
 

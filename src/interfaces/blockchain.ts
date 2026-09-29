@@ -1,19 +1,16 @@
 import type { BLOCKCHAIN_TRANSACTION_STATUS } from '../constants';
-import { BookPostingPurposeId } from '../constants/bookPostingPurpose';
 import type { Book } from '../models';
 import type { Transaction } from './transaction';
 
 export type BlockchainTransactionStatus = (typeof BLOCKCHAIN_TRANSACTION_STATUS)[keyof typeof BLOCKCHAIN_TRANSACTION_STATUS];
 
 export interface BlockchainSender {
-  idempotencyToken: string;
   address: string;
   assetTicker: string;
   quantity: string;
   feePaid?: string;
 }
 
-/** Danh tính book custody để tạo mới khi chưa có (Listener đã "Identify System Deposit" nên biết account nhận). */
 export interface DepositAccountIdentity {
   clientId: number;
   accountId: number;
@@ -23,25 +20,18 @@ export interface DepositAccountIdentity {
 }
 
 export interface BlockchainRecipient {
-  idempotencyToken: string;
   address: string;
   assetTicker: string;
   quantity: string;
-  type: BookPostingPurposeId;
-  /**
-   * Chỉ cần khi địa chỉ nhận chưa có Book: có thì "Find / Create Deposit Book" tạo book mới,
-   * không có thì deposit tới địa chỉ lạ vẫn bị từ chối (NotFoundError) vì không đủ dữ liệu để tạo book.
-   */
+  type: 'AMOUNT' | 'REWARD';
+
   account?: DepositAccountIdentity;
 }
 
-/**
- * Payload không mang sẵn loại transaction (deposit/withdraw/stake/...): handler đối chiếu
- * `transactionHash` với bảng JournalTransaction để biết đúng loại.
- */
 export interface BlockchainMessagePayload {
   transactionHash: string;
 
+  idempotencyToken: string;
   blockNumber?: number;
 
   status: BlockchainTransactionStatus;
@@ -62,7 +52,6 @@ export interface BlockchainMessagePayload {
   };
 }
 
-/** Book custody nhận deposit + recipient trong payload khớp với book đó. */
 export interface DepositBookMatch {
   book: Book;
   recipient: BlockchainRecipient;
@@ -73,12 +62,6 @@ export interface BlockchainSubmissionResult {
   senderAddress?: string;
 }
 
-/**
- * "Cổng" (port) gọi blockchain provider. Chưa có adapter thật trong repo này —
- * tầng ngoài gán implementation vào `SystemTransactionHandler.blockchainSubmitter`
- * sau khi container.resolve() (không đưa vào constructor vì @autoInjectable() không
- * tự resolve được 1 interface, không có token ở runtime).
- */
 export interface IBlockchainSubmitter {
   submit(transaction: Transaction, journalTransactionId: number): Promise<BlockchainSubmissionResult>;
 }

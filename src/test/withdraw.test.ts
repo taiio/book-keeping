@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 
-import { BLOCKCHAIN_TRANSACTION_STATUS, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE } from '../constants';
+import { BLOCKCHAIN_TRANSACTION_STATUS, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import type { BlockchainMessagePayload, BlockchainTransactionStatus, Withdraw } from '../interfaces';
 import { BOOK, TEST_ACCOUNT, closeTestDatabase, createTestLedger, type TestLedger } from './support/inMemoryLedger';
 
@@ -27,6 +27,7 @@ const withdraw: Withdraw = {
 function withdrawEvent(status: BlockchainTransactionStatus): BlockchainMessagePayload {
   return {
     transactionHash: TRANSACTION_HASH,
+    idempotencyToken: withdraw.idempotencyToken,
     status,
     senders: [{ address: SENDER_ADDRESS, assetTicker: TEST_ACCOUNT.assetTicker, quantity: AMOUNT, feePaid: FEE }],
     recipients: [{ address: RECIPIENT_ADDRESS, assetTicker: TEST_ACCOUNT.assetTicker, quantity: AMOUNT, type: 'AMOUNT' }],
@@ -41,8 +42,7 @@ function buckets(ledger: TestLedger) {
     authorized: ledger.amountOf(BOOK.custodyAuthorized('BTC')),
     sent: ledger.amountOf(BOOK.custodySent('BTC')),
     confirming: ledger.amountOf(BOOK.custodyConfirming('BTC')),
-    feeConfirming: ledger.amountOf(BOOK.feeConfirming('BTC')),
-    feeRevenue: ledger.amountOf(BOOK.feeRevenue('BTC')),
+    // amount + fee cùng asset/client/account -> cùng 1 book External (fee được đối xử hệt amount, không có book riêng).
     external: ledger.amountOf(BOOK.external('BTC')),
   };
 }
@@ -88,7 +88,7 @@ describe('WITHDRAW — lifecycle', () => {
     );
   });
 
-  it('CONFIRMING moves Sent -> Confirming; CONFIRMED settles amount to External and fee to Fee Revenue', async () => {
+  it('CONFIRMING moves Sent -> Confirming; CONFIRMED settles amount + fee to External', async () => {
     const sent = await ledger.systemTransactionHandler.handle(withdraw);
 
     const confirming = await ledger.blockchainEventHandler.handle(withdrawEvent(BLOCKCHAIN_TRANSACTION_STATUS.CONFIRMING));
@@ -110,9 +110,7 @@ describe('WITHDRAW — lifecycle', () => {
 
     assert.equal(b.available, '9898');
     assert.equal(b.confirming, '0');
-    assert.equal(b.external, '100');
-    assert.equal(b.feeConfirming, '0', 'fee passes through Fee Confirming and lands in Fee Revenue');
-    assert.equal(b.feeRevenue, '2');
+    assert.equal(b.external, '102', 'amount (100) + fee (2) both settle into the same External book');
 
     assert.equal(ledger.totalPosted(), 0n);
     assert.equal(ledger.totalBalance(), BigInt(INITIAL_BALANCE));
@@ -140,14 +138,13 @@ describe('WITHDRAW — lifecycle', () => {
 
     const failed = await ledger.blockchainEventHandler.handle(withdrawEvent(BLOCKCHAIN_TRANSACTION_STATUS.FAILED));
 
-    assert.equal(failed.journalTransactionState, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED);
+    assert.equal(failed.journalTransactionState, JOURNAL_TRANSACTION_STATE.REJECTED);
 
     const b = buckets(ledger);
 
     assert.equal(b.available, INITIAL_BALANCE);
     assert.equal(b.confirming, '0');
     assert.equal(b.external, undefined);
-    assert.equal(b.feeRevenue, undefined);
     assert.equal(ledger.totalPosted(), 0n);
   });
 
@@ -183,7 +180,7 @@ describe('WITHDRAW — rejection paths', () => {
 
     const entity = await ledger.systemTransactionHandler.handle(withdraw);
 
-    assert.equal(entity.journalTransactionState, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED);
+    assert.equal(entity.journalTransactionState, JOURNAL_TRANSACTION_STATE.REJECTED);
     assert.match(entity.errorMessage ?? '', /Insufficient balance/);
     assert.equal(ledger.tables.bookPostings.rows.length, 0);
     assert.equal(ledger.amountOf(BOOK.custodyAvailable('BTC')), '101');
@@ -197,7 +194,9 @@ describe('WITHDRAW — rejection paths', () => {
 
     await ledger.systemTransactionHandler.handle(withdraw);
 
-    const reservePostings = ledger.tables.bookPostings.rows.filter((row) => row.idempotencyToken.includes(':ADV:AUTHORIZING:'));
+    // Format: {journal idempotencyToken}-{TRANSACTION_TYPE}-{TRANSACTION_STATE}-{index} (xem helpers/idempotency.ts).
+    const reservePrefix = `${withdraw.idempotencyToken}-${TRANSACTION_TYPE.WITHDRAW}-${TRANSACTION_STATE.AUTHORIZING.id}-`;
+    const reservePostings = ledger.tables.bookPostings.rows.filter((row) => row.idempotencyToken.startsWith(reservePrefix));
 
     assert.equal(reservePostings.length, 4, 'amount + fee, 2 legs each');
     assert.equal(
@@ -216,7 +215,7 @@ describe('WITHDRAW — rejection paths', () => {
 
     const entity = await ledger.systemTransactionHandler.handle(withdraw);
 
-    assert.equal(entity.journalTransactionState, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED);
+    assert.equal(entity.journalTransactionState, JOURNAL_TRANSACTION_STATE.REJECTED);
     assert.equal(entity.errorMessage, 'provider down');
 
     const b = buckets(ledger);

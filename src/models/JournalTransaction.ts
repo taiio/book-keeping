@@ -1,8 +1,7 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Index, ForeignKey, BelongsTo } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Index } from 'sequelize-typescript';
 
 import { JournalTransactionHistory } from './JournalTransactionHistory';
 import { BookPosting } from './BookPosting';
-import { TransactionState } from './TransactionState';
 import { JOURNAL_TRANSACTION_STATE } from '../constants';
 import type { JournalTransactionStateValue } from '../interfaces';
 
@@ -85,6 +84,11 @@ export class JournalTransaction extends Model {
   })
   declare sourceContent: string | null;
 
+  /**
+   * Bất biến kể từ khi journal xuất hiện (AUTHORIZING với transaction do hệ thống khởi tạo, CONFIRMING với
+   * DEPOSIT) — chỉ dùng để get-or-create/tra cứu, KHÔNG bao giờ bị ghi đè sau đó (xem
+   * JournalTransactionRepository, không có logic update trường này).
+   */
   @Column({
     field: 'idempotency_token',
     type: DataType.STRING(255),
@@ -95,18 +99,15 @@ export class JournalTransaction extends Model {
 
   @Column({
     field: 'journal_transaction_state',
-    type: DataType.ENUM(JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.CANCELLED_OR_EXPIRED),
+    type: DataType.INTEGER,
     allowNull: false,
-    defaultValue: JOURNAL_TRANSACTION_STATE.ACTIVE,
+    validate: {
+      isIn: [
+        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
+      ],
+    },
   })
   declare journalTransactionState: JournalTransactionStateValue;
-
-  @ForeignKey(() => TransactionState)
-  @Column({ field: 'transaction_state_id', type: DataType.INTEGER, allowNull: true })
-  declare transactionStateId: number | null;
-
-  @BelongsTo(() => TransactionState, { foreignKey: 'transactionStateId', as: 'transactionState' })
-  declare transactionState: TransactionState | null;
 
   @Column({
     field: 'business_post_date_time',
