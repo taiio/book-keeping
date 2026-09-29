@@ -1,297 +1,163 @@
-import { Transaction as SequelizeTransaction } from 'sequelize';
+import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
-import { bookPostingIdempotencyToken, collectDebitAndFeeMovements, custodyBookParams, externalBookParams, negateQuantity } from '../helpers';
-import {
-  ApplyMovementParams,
-  BucketMoveParams,
-  DepositMovementParams,
-  DepositPhase,
-  GetOrCreateJournalTransactionParams,
-  GetOrCreateJournalTransactionResult,
-  LedgerOperationParams,
-  LegItem,
-  MovementSpec,
-  ReserveResult,
-  ResolvedBooks,
-  TransitionParams,
-  UpdateJournalTransactionResult,
-} from '../interfaces';
-import { Book } from '../models';
+import { InvalidTransitionError, NotFoundError } from '../common/errors';
+import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { custodyBookParams, externalBookParams } from '../helpers/book';
+import { bookPostingIdempotencyToken } from '../helpers/idempotency';
+import { negateQuantity } from '../helpers/quantity';
+import type { BookLegParams, GetOrCreateJournalTransactionParams } from '../interfaces';
+import type { LedgerLeg, TransitionRequest, TransitionResult } from '../interfaces/LedgerPipeline';
+import { Book, JournalTransaction } from '../models';
 import { BookRepository } from '../repositories/Book';
 import { BookPostingRepository } from '../repositories/BookPosting';
 import { JournalTransactionRepository } from '../repositories/JournalTransaction';
+import { JournalTransactionHistoryRepository } from '../repositories/JournalTransactionHistory';
+import { LedgerStateMachine } from './LedgerStateMachine';
+import { LEDGER_MOVEMENTS, type BookRef } from './ledger-movements';
 
 @singleton()
 @autoInjectable()
 export class LedgerPipeline {
+  private readonly journalTransactionRepository: JournalTransactionRepository;
+  private readonly journalTransactionHistoryRepository: JournalTransactionHistoryRepository;
   private readonly bookRepository: BookRepository;
   private readonly bookPostingRepository: BookPostingRepository;
-  private readonly journalTransactionRepository: JournalTransactionRepository;
+  private readonly stateMachine: LedgerStateMachine;
 
   constructor(
+    journalTransactionRepository?: JournalTransactionRepository,
+    journalTransactionHistoryRepository?: JournalTransactionHistoryRepository,
     bookRepository?: BookRepository,
     bookPostingRepository?: BookPostingRepository,
-    journalTransactionRepository?: JournalTransactionRepository,
+    stateMachine?: LedgerStateMachine,
   ) {
+    this.journalTransactionRepository = journalTransactionRepository!;
+    this.journalTransactionHistoryRepository = journalTransactionHistoryRepository!;
     this.bookRepository = bookRepository!;
     this.bookPostingRepository = bookPostingRepository!;
-    this.journalTransactionRepository = journalTransactionRepository!;
+    this.stateMachine = stateMachine!;
   }
 
-  async openJournal(params: GetOrCreateJournalTransactionParams, tx: SequelizeTransaction): Promise<GetOrCreateJournalTransactionResult> {
-    return this.journalTransactionRepository.getOrCreateJournalTransaction(params, tx);
+  async createJournalTransaction(params: GetOrCreateJournalTransactionParams, tx: Transaction): Promise<JournalTransaction> {
+    const { journalTransaction } = await this.journalTransactionRepository.getOrCreateJournalTransaction(
+      { businessPostDateTime: new Date(), ...params },
+      tx,
+    );
+    return journalTransaction;
   }
 
-  async getCurrentTransactionStateId(journalTransactionId: number, tx: SequelizeTransaction): Promise<number | null> {
-    return this.journalTransactionRepository.getCurrentTransactionStateId(journalTransactionId, tx);
+  findByUuidToken(uuidToken: string, tx: Transaction): Promise<JournalTransaction[]> {
+    return this.journalTransactionRepository.findAllByUuidToken(uuidToken, tx);
   }
 
-  async transition(params: TransitionParams, tx: SequelizeTransaction): Promise<UpdateJournalTransactionResult> {
-    const { legs, onApplied, ...update } = params;
+  findByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction[]> {
+    return this.journalTransactionRepository.findAllByTransactionHash(transactionHash, tx);
+  }
 
-    const result = await this.journalTransactionRepository.updateJournalTransaction(update, tx);
+  async getCurrentStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
+    const latest = await this.journalTransactionHistoryRepository.findLatest(journalTransactionId, tx);
+    return latest?.transactionStateId ?? null;
+  }
 
-    if (result.outcome === 'APPLIED' && legs && onApplied && result.previousTransactionStateId != null) {
-      const { journalTransaction } = result;
-      const operation: BucketMoveParams = {
-        journalTransactionId: journalTransaction.id,
-        uuidToken: journalTransaction.uuidToken,
-        idempotencyToken: journalTransaction.idempotencyToken ?? journalTransaction.uuidToken,
-        transactionTypeId: journalTransaction.transactionTypeId ?? 0,
-        legs,
-        createdBy: update.updatedBy,
-        fromStateId: result.previousTransactionStateId,
-        toStateId: result.transactionStateId ?? undefined,
-      };
+  async attachTransactionHash(journalTransactionIds: number[], transactionHash: string, tx: Transaction): Promise<void> {
+    for (const journalTransactionId of journalTransactionIds)
+      await this.journalTransactionRepository.updateJournalTransaction({ journalTransactionId, transactionHash }, tx);
+  }
 
-      if (onApplied === 'ADVANCE') {
-        await this.advance(operation, tx);
-      } else if (onApplied === 'SETTLE') {
-        await this.settle(operation, tx);
-      } else {
-        await this.release(operation, tx);
+  async processTransition(requests: TransitionRequest[], tx: Transaction): Promise<TransitionResult[]> {
+    const results: TransitionResult[] = [];
+
+    for (const request of requests) {
+      const journalTransaction = request.journalTransaction;
+      const currentStateId = await this.getCurrentStateId(journalTransaction.id, tx);
+
+      this.stateMachine.validate(
+        journalTransaction.transactionTypeId,
+        currentStateId,
+        request.targetStateId,
+        journalTransaction.id,
+        journalTransaction.journalTransactionState,
+      );
+
+      const movement = LEDGER_MOVEMENTS[journalTransaction.transactionTypeId]?.[request.targetStateId];
+
+      if (!movement) throw new InvalidTransitionError(journalTransaction.id, currentStateId, request.targetStateId);
+
+      const books = [];
+
+      for (const leg of request.legs) {
+        const from = await this.findBook(movement.from, leg.item, journalTransaction.transactionTypeId, tx);
+        const to = await this.findBook(movement.to, leg.item, journalTransaction.transactionTypeId, tx);
+        books.push({ leg, from, to });
       }
-    }
 
-    return result;
-  }
-
-  private async resolveAndLockAll(specs: MovementSpec[], tx: SequelizeTransaction): Promise<Map<string, ResolvedBooks>> {
-    const idsBySpecKey = new Map<string, { fromId: number; toId: number }>();
-    const allIds: number[] = [];
-
-    for (const spec of specs) {
-      const { book: fromBook } = await this.bookRepository.getOrCreateBook(spec.fromLeg, tx);
-      const { book: toBook } = await this.bookRepository.getOrCreateBook(spec.toLeg, tx);
-
-      idsBySpecKey.set(spec.key, { fromId: fromBook.id, toId: toBook.id });
-      allIds.push(fromBook.id, toBook.id);
-    }
-
-    const lockedBooks = await this.bookRepository.lockBooksInOrder(allIds, tx);
-    const resolved = new Map<string, ResolvedBooks>();
-
-    for (const [key, { fromId, toId }] of idsBySpecKey) {
-      resolved.set(key, { fromBook: lockedBooks.get(fromId)!, toBook: lockedBooks.get(toId)! });
-    }
-
-    return resolved;
-  }
-
-  private async applyMovement(params: ApplyMovementParams, tx: SequelizeTransaction): Promise<void> {
-    const { fromBook, toBook, quantity, purposeId, journalTransactionId, createdBy } = params;
-    const businessPostDateTime = new Date();
-
-    const post = (book: Book, amount: string, idempotencyToken: string) =>
-      this.bookPostingRepository.createBookPosting(
-        {
-          bookId: book.id,
-          journalTransactionId,
-          amount,
-          assetTypeId: book.assetTypeId,
-          bookPostingPurposeId: purposeId,
-          businessPostDateTime,
-          idempotencyToken,
-          createdBy,
-        },
+      await this.bookRepository.lockBooksInOrder(
+        books.flatMap((book) => [book.from.id, book.to.id]),
         tx,
       );
 
-    await post(fromBook, negateQuantity(quantity), params.debitIdempotencyToken);
-    await post(toBook, quantity, params.creditIdempotencyToken);
+      if (request.targetStateId === TRANSACTION_STATE.CONFIRMED.id) {
+        await this.journalTransactionRepository.updateJournalTransaction(
+          { journalTransactionId: journalTransaction.id, journalTransactionState: JOURNAL_TRANSACTION_STATE.COMPLETED },
+          tx,
+        );
+        journalTransaction.journalTransactionState = JOURNAL_TRANSACTION_STATE.COMPLETED;
+      }
+
+      await this.journalTransactionHistoryRepository.record(
+        { journalTransaction, historyTransactionTypeId: HISTORY_EVENT_TYPE.STATE_ADVANCED, transactionStateId: request.targetStateId },
+        tx,
+      );
+
+      let index = 1;
+
+      for (const { leg, from, to } of books) {
+        await this.postDoubleEntry(journalTransaction, request.targetStateId, leg, from, to, index, tx);
+        index += 2;
+      }
+
+      results.push({ journalTransactionId: journalTransaction.id, applied: true });
+    }
+
+    return results;
   }
 
-  private async applyAll(
-    specs: MovementSpec[],
-    operation: Pick<LedgerOperationParams, 'journalTransactionId' | 'idempotencyToken' | 'transactionTypeId' | 'createdBy'>,
-    transactionStateId: number,
-    tx: SequelizeTransaction,
-    preResolved?: Map<string, ResolvedBooks>,
+  private async postDoubleEntry(
+    journalTransaction: JournalTransaction,
+    targetStateId: number,
+    leg: LedgerLeg,
+    from: Book,
+    to: Book,
+    firstIndex: number,
+    tx: Transaction,
   ): Promise<void> {
-    const resolved = preResolved ?? (await this.resolveAndLockAll(specs, tx));
-
-    let index = await this.bookPostingRepository.countByJournalTransactionId(operation.journalTransactionId, tx);
-
-    for (const spec of specs) {
-      const { fromBook, toBook } = resolved.get(spec.key)!;
-
-      index += 1;
-      const debitIdempotencyToken = bookPostingIdempotencyToken(operation.idempotencyToken, operation.transactionTypeId, transactionStateId, index);
-      index += 1;
-      const creditIdempotencyToken = bookPostingIdempotencyToken(operation.idempotencyToken, operation.transactionTypeId, transactionStateId, index);
-
-      await this.applyMovement(
-        {
-          fromBook,
-          toBook,
-          quantity: spec.item.quantity,
-          purposeId: spec.purposeId,
-          journalTransactionId: operation.journalTransactionId,
-          debitIdempotencyToken,
-          creditIdempotencyToken,
-          createdBy: operation.createdBy,
-        },
-        tx,
-      );
-    }
-  }
-
-  async reserve(params: LedgerOperationParams, tx: SequelizeTransaction): Promise<ReserveResult> {
-    const specs = this.buildSpecs(
-      collectDebitAndFeeMovements(params.legs),
-      TRANSACTION_STATE.CONFIRMED.id,
-      TRANSACTION_STATE.AUTHORIZING.id,
-      params.createdBy,
-    );
-    const resolved = await this.resolveAndLockAll(specs, tx);
-
-    const requiredByBookId = new Map<number, bigint>();
-    const bookById = new Map<number, Book>();
-
-    for (const spec of specs) {
-      const { fromBook } = resolved.get(spec.key)!;
-
-      bookById.set(fromBook.id, fromBook);
-      requiredByBookId.set(fromBook.id, (requiredByBookId.get(fromBook.id) ?? 0n) + BigInt(spec.item.quantity));
-    }
-
-    const shortfalls: string[] = [];
-
-    for (const [bookId, required] of requiredByBookId) {
-      const book = bookById.get(bookId)!;
-      const available = BigInt(book.amount);
-
-      if (available < required) {
-        shortfalls.push(`bookId=${bookId} assetId=${book.assetId} required=${required} available=${available}`);
-      }
-    }
-
-    if (shortfalls.length > 0) {
-      return { ok: false, shortfalls };
-    }
-
-    await this.applyAll(specs, params, TRANSACTION_STATE.AUTHORIZING.id, tx, resolved);
-
-    return { ok: true };
-  }
-
-  async advance(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
-    if (params.toStateId == null) {
-      throw new Error('advance() requires toStateId.');
-    }
-
-    const specs = this.buildSpecs(collectDebitAndFeeMovements(params.legs), params.fromStateId, params.toStateId, params.createdBy);
-
-    await this.applyAll(specs, params, params.toStateId, tx);
-  }
-
-  async release(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
-    const specs = this.buildSpecs(collectDebitAndFeeMovements(params.legs), params.fromStateId, TRANSACTION_STATE.CONFIRMED.id, params.createdBy);
-
-    await this.applyAll(specs, params, params.fromStateId, tx);
-  }
-
-  async settle(params: BucketMoveParams, tx: SequelizeTransaction): Promise<void> {
-    const fromStateId = params.fromStateId;
-    const specs: MovementSpec[] = collectDebitAndFeeMovements(params.legs).map((movement) => ({
-      ...movement,
-      fromLeg: custodyBookParams(movement.item, fromStateId, params.createdBy),
-      toLeg: externalBookParams(movement.item, params.createdBy),
-    }));
-
-    params.legs.creditItems.forEach((item, index) => {
-      specs.push({
-        key: `C${index}`,
-        item,
-        purposeId: BOOK_POSTING_PURPOSE.AMOUNT,
-        fromLeg: externalBookParams(item, params.createdBy),
-        toLeg: custodyBookParams(item, TRANSACTION_STATE.CONFIRMED.id, params.createdBy),
-      });
-    });
-
-    await this.applyAll(specs, params, TRANSACTION_STATE.CONFIRMED.id, tx);
-  }
-
-  async postDeposit(phase: DepositPhase, params: DepositMovementParams, tx: SequelizeTransaction): Promise<void> {
-    const { matchedCustodyBook: available } = params;
-
-    const item: LegItem = {
-      assetId: available.assetId,
-      assetTicker: available.assetTicker,
-      quantity: params.quantity,
-      clientId: available.clientId,
-      accountId: available.accountId,
-      assetTypeId: available.assetTypeId,
-      walletTypeId: available.walletTypeId,
+    const common = {
+      journalTransactionId: journalTransaction.id,
+      assetTypeId: from.assetTypeId,
+      bookPostingPurposeId: leg.purpose,
+      businessPostDateTime: journalTransaction.businessPostDateTime ?? new Date(),
     };
+    const token = (index: number) =>
+      bookPostingIdempotencyToken(journalTransaction.idempotencyToken!, journalTransaction.transactionTypeId!, targetStateId, index);
 
-    const { book: confirmingUnlocked } = await this.bookRepository.getOrCreateBook(
-      custodyBookParams(item, TRANSACTION_STATE.CONFIRMING.id, params.createdBy),
+    await this.bookPostingRepository.createBookPosting(
+      { ...common, bookId: from.id, amount: negateQuantity(leg.amount), idempotencyToken: token(firstIndex) },
       tx,
     );
-    const { book: externalUnlocked } = await this.bookRepository.getOrCreateBook(externalBookParams(item, params.createdBy), tx);
-
-    const locked = await this.bookRepository.lockBooksInOrder([available.id, confirmingUnlocked.id, externalUnlocked.id], tx);
-    const confirming = locked.get(confirmingUnlocked.id)!;
-    const external = locked.get(externalUnlocked.id)!;
-
-    const [fromBook, toBook] =
-      phase === TRANSACTION_STATE.CONFIRMING.code
-        ? [external, confirming]
-        : phase === TRANSACTION_STATE.CONFIRMED.code
-          ? [confirming, locked.get(available.id)!]
-          : [confirming, external];
-
-    const transactionStateId = phase === TRANSACTION_STATE.CONFIRMED.code ? TRANSACTION_STATE.CONFIRMED.id : TRANSACTION_STATE.CONFIRMING.id;
-    const index = (await this.bookPostingRepository.countByJournalTransactionId(params.journalTransactionId, tx)) + 1;
-
-    await this.applyMovement(
-      {
-        fromBook,
-        toBook,
-        quantity: params.quantity,
-        purposeId: BOOK_POSTING_PURPOSE.AMOUNT,
-        journalTransactionId: params.journalTransactionId,
-        debitIdempotencyToken: bookPostingIdempotencyToken(params.idempotencyToken, params.transactionTypeId, transactionStateId, index),
-        creditIdempotencyToken: bookPostingIdempotencyToken(params.idempotencyToken, params.transactionTypeId, transactionStateId, index + 1),
-        createdBy: params.createdBy,
-      },
-      tx,
-    );
+    await this.bookPostingRepository.createBookPosting({ ...common, bookId: to.id, amount: leg.amount, idempotencyToken: token(firstIndex + 1) }, tx);
   }
 
-  private buildSpecs(
-    movements: ReturnType<typeof collectDebitAndFeeMovements>,
-    fromStateId: number,
-    toStateId: number,
-    createdBy?: number,
-  ): MovementSpec[] {
-    return movements.map((movement) => ({
-      ...movement,
-      fromLeg: custodyBookParams(movement.item, fromStateId, createdBy),
-      toLeg: custodyBookParams(movement.item, toStateId, createdBy),
-    }));
+  private async findBook(ref: BookRef, item: LedgerLeg['item'], transactionTypeId: number, tx: Transaction): Promise<Book> {
+    const params: BookLegParams = ref.bookPurposeId === 2 ? externalBookParams(item) : custodyBookParams(item, ref.transactionStateId!);
+    const mustExist = transactionTypeId === TRANSACTION_TYPE.DEPOSIT || ref.transactionStateId === TRANSACTION_STATE.CONFIRMED.id;
+
+    if (mustExist) {
+      const book = await this.bookRepository.findBook(params, tx);
+      if (!book) throw new NotFoundError('Book', JSON.stringify(params));
+      return book;
+    }
+
+    return (await this.bookRepository.getOrCreateBook(params, tx)).book;
   }
 }

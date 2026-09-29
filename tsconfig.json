@@ -23,7 +23,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
 
-    "types": ["node"]
+    "types": ["node", "jest"]
   },
 
   "include": ["src/**/*.ts", "scripts/**/*.ts"]

@@ -113,15 +113,6 @@ export class BookPosting extends Model {
   })
   declare assetTypeId: number | null;
 
-  // Không có cột transaction_state_id ở đây: KHÔNG cache state lên BookPosting. "Latest transaction state" của
-  // 1 journal được suy ra bằng cách lấy BookPosting MỚI NHẤT (order by id DESC) của journal đó, rồi đi qua
-  // bookId -> Book.transactionStateId (Book vốn đã có sẵn cột này) — xem
-  // BookPostingRepository.findLatestTransactionStateId.
-
-  // ============================================================
-  // Sequence
-  // ============================================================
-
   @Column({
     field: 'sequence_no',
     type: DataType.INTEGER,
@@ -130,20 +121,12 @@ export class BookPosting extends Model {
   })
   declare sequenceNo: number;
 
-  // ============================================================
-  // Business date
-  // ============================================================
-
   @Column({
     field: 'business_post_date_time',
     type: DataType.DATE,
     allowNull: true,
   })
   declare businessPostDateTime: Date;
-
-  // ============================================================
-  // Idempotency
-  // ============================================================
 
   @Column({
     field: 'idempotency_token',
@@ -152,14 +135,6 @@ export class BookPosting extends Model {
     unique: 'uk_book_posting_idempotency_token',
   })
   declare idempotencyToken: string;
-
-  // ============================================================
-  // Purpose
-  // ============================================================
-
-  // ============================================================
-  // Audit
-  // ============================================================
 
   @Column({
     field: 'created_date',
@@ -175,10 +150,6 @@ export class BookPosting extends Model {
     allowNull: true,
   })
   declare createdBy: number | null;
-
-  // ============================================================
-  // Associations
-  // ============================================================
 
   @HasMany(() => BookHistory, {
     foreignKey: 'bookPostingId',

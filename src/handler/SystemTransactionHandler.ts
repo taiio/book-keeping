@@ -1,171 +1,150 @@
-import { Transaction as SequelizeTransaction } from 'sequelize';
-import { autoInjectable, singleton } from 'tsyringe';
+import { inject, autoInjectable, singleton } from 'tsyringe';
 
 import { UnitOfWork } from '../common/UnitOfWork';
-import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_STATE_SEQUENCE, TRANSACTION_TYPE } from '../constants';
-import { NOT_WIRED_SUBMITTER, getAccountIds, getAccountingLegs, toTransactionEntity } from '../helpers';
-import {
-  AuthorizeResult,
-  BlockchainSubmissionResult,
-  IBlockchainSubmitter,
-  Transaction as DomainTransaction,
-  TransactionEntity,
-} from '../interfaces';
-import { JournalTransaction } from '../models';
+import { UnsupportedOperationError } from '../common/errors';
+import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import type { IBlockchainSubmitter, LedgerLeg, TransitionRequest, Withdraw } from '../interfaces';
+import type { JournalTransaction } from '../models';
 import { LedgerPipeline } from './LedgerPipeline';
+import { isInternalRecipient, type SystemTransactionResult } from '../interfaces/SystemTransactionHandler';
+
+export const BLOCKCHAIN_SUBMITTER = 'IBlockchainSubmitter';
 
 @singleton()
 @autoInjectable()
 export class SystemTransactionHandler {
-  public blockchainSubmitter: IBlockchainSubmitter = NOT_WIRED_SUBMITTER;
-
   private readonly unitOfWork: UnitOfWork;
   private readonly ledgerPipeline: LedgerPipeline;
+  private readonly blockchainSubmitter: IBlockchainSubmitter;
 
-  constructor(unitOfWork?: UnitOfWork, ledgerPipeline?: LedgerPipeline) {
+  constructor(
+    unitOfWork?: UnitOfWork,
+    ledgerPipeline?: LedgerPipeline,
+    @inject(BLOCKCHAIN_SUBMITTER)
+    blockchainSubmitter?: IBlockchainSubmitter,
+  ) {
     this.unitOfWork = unitOfWork!;
     this.ledgerPipeline = ledgerPipeline!;
+    this.blockchainSubmitter = blockchainSubmitter!;
   }
 
-  async handle(transaction: DomainTransaction, createdBy?: number): Promise<TransactionEntity> {
-    this.validateInput(transaction);
+  async handle(withdraw: Withdraw): Promise<SystemTransactionResult> {
+    this.validate(withdraw);
 
-    const authResult = await this.unitOfWork.execute((tx) => this.authorize(transaction, tx, createdBy));
+    const created = await this.unitOfWork.execute(async (tx) => {
+      const existing = await this.ledgerPipeline.findByUuidToken(withdraw.uuidToken, tx);
 
-    if (authResult.phase !== 'AUTHORIZED') {
-      return toTransactionEntity(transaction, authResult.journalTransaction, authResult.transactionStateId, authResult.errorMessage);
-    }
+      if (existing.length > 0) return null;
 
-    return this.submitAndAdvance(transaction, authResult.journalTransaction, createdBy);
-  }
+      const senders = await this.createSenderJournalTransactions(withdraw, tx);
+      const recipients = await this.createRecipientJournalTransactions(withdraw, tx);
 
-  private validateInput(transaction: DomainTransaction): void {
-    if (!transaction.idempotencyToken || !transaction.uuidToken) {
-      throw new Error('Transaction is missing idempotencyToken/uuidToken.');
-    }
+      await this.ledgerPipeline.processTransition(this.senderRequests(withdraw, senders, TRANSACTION_STATE.AUTHORIZING.id), tx);
 
-    const { debitItems, creditItems, fee } = getAccountingLegs(transaction);
-
-    if ([...debitItems, ...creditItems, fee].some((item) => !item.assetTicker)) {
-      throw new Error('Transaction item is missing assetTicker.');
-    }
-  }
-
-  private async authorize(transaction: DomainTransaction, tx: SequelizeTransaction, createdBy?: number): Promise<AuthorizeResult> {
-    const { fromAccountId, toAccountId } = getAccountIds(transaction);
-
-    const { journalTransaction, created } = await this.ledgerPipeline.openJournal(
-      {
-        idempotencyToken: transaction.idempotencyToken,
-        uuidToken: transaction.uuidToken,
-        transactionTypeId: TRANSACTION_TYPE[transaction.type],
-        transactionStateId: TRANSACTION_STATE.AUTHORIZING.id,
-        sourceContent: JSON.stringify(transaction),
-        fromAccountId,
-        toAccountId,
-        createdBy,
-      },
-      tx,
-    );
+      return { senders, recipients };
+    });
 
     if (!created) {
-      const transactionStateId = await this.ledgerPipeline.getCurrentTransactionStateId(journalTransaction.id, tx);
-
-      return { phase: 'REPLAYED', journalTransaction, transactionStateId };
-    }
-
-    const legs = getAccountingLegs(transaction);
-    const idempotencyToken = journalTransaction.idempotencyToken ?? journalTransaction.uuidToken;
-    const transactionTypeId = journalTransaction.transactionTypeId ?? TRANSACTION_TYPE[transaction.type];
-
-    const reserved = await this.ledgerPipeline.reserve(
-      { journalTransactionId: journalTransaction.id, uuidToken: journalTransaction.uuidToken, idempotencyToken, transactionTypeId, legs, createdBy },
-      tx,
-    );
-
-    if (!reserved.ok) {
-      const rejected = await this.ledgerPipeline.transition(
-        {
-          journalTransactionId: journalTransaction.id,
-          journalTransactionState: JOURNAL_TRANSACTION_STATE.REJECTED,
-          updatedBy: createdBy,
-        },
-        tx,
-      );
-
       return {
-        phase: 'REJECTED',
-        journalTransaction: rejected.journalTransaction,
-        transactionStateId: rejected.transactionStateId,
-        errorMessage: `Insufficient balance: ${reserved.shortfalls.join('; ')}`,
+        uuidToken: withdraw.uuidToken,
+        processed: false,
+        transactionHash: null,
+        senderJournalTransactionIds: [],
+        recipientJournalTransactionIds: [],
       };
     }
 
-    const authorized = await this.ledgerPipeline.transition(
-      {
-        journalTransactionId: journalTransaction.id,
-        targetTransactionStateId: TRANSACTION_STATE.AUTHORIZED.id,
-        expectedStateSequence: TRANSACTION_STATE_SEQUENCE,
-        legs,
-        onApplied: 'ADVANCE',
-        updatedBy: createdBy,
-      },
-      tx,
-    );
+    const { senders, recipients } = created;
+
+    for (const stateId of [TRANSACTION_STATE.AUTHORIZED.id, TRANSACTION_STATE.SENT.id]) {
+      await this.unitOfWork.execute((tx) => this.ledgerPipeline.processTransition(this.senderRequests(withdraw, senders, stateId), tx));
+    }
+
+    const { transactionHash } = await this.blockchainSubmitter.submit(withdraw, senders[0].id);
+
+    const allIds = [...senders, ...recipients].map((jt) => jt.id);
+
+    await this.unitOfWork.execute((tx) => this.ledgerPipeline.attachTransactionHash(allIds, transactionHash, tx));
 
     return {
-      phase: authorized.outcome === 'APPLIED' ? 'AUTHORIZED' : 'REPLAYED',
-      journalTransaction: authorized.journalTransaction,
-      transactionStateId: authorized.transactionStateId,
+      uuidToken: withdraw.uuidToken,
+      processed: true,
+      transactionHash,
+      senderJournalTransactionIds: senders.map((jt) => jt.id),
+      recipientJournalTransactionIds: recipients.map((jt) => jt.id),
     };
   }
 
-  private async submitAndAdvance(
-    transaction: DomainTransaction,
-    journalTransaction: JournalTransaction,
-    createdBy?: number,
-  ): Promise<TransactionEntity> {
-    let submission: BlockchainSubmissionResult;
+  private validate(withdraw: Withdraw): void {
+    if (withdraw.type !== TRANSACTION_TYPE.WITHDRAW) throw new UnsupportedOperationError(`transaction type ${(withdraw as { type: number }).type}`);
+    if (!withdraw.uuidToken) throw new Error('uuidToken is required');
+    if (!withdraw.sender?.length) throw new Error('At least one sender is required');
+    if (!withdraw.fee) throw new Error('Exactly one fee is required');
 
-    try {
-      submission = await this.blockchainSubmitter.submit(transaction, journalTransaction.id);
-    } catch (error) {
-      const rejected = await this.unitOfWork.execute(async (tx) => {
-        return this.ledgerPipeline.transition(
+    for (const item of [...withdraw.sender, withdraw.fee]) {
+      if (!/^[1-9]\d*$/.test(item.quantity)) throw new Error(`Quantity must be a positive integer string: ${item.quantity}`);
+      if (!item.idempotencyToken) throw new Error('idempotencyToken is required on every item');
+    }
+  }
+
+  private async createSenderJournalTransactions(
+    withdraw: Withdraw,
+    tx: Parameters<Parameters<UnitOfWork['execute']>[0]>[0],
+  ): Promise<JournalTransaction[]> {
+    const sourceContent = JSON.stringify(withdraw);
+    const journalTransactions: JournalTransaction[] = [];
+
+    for (const sender of withdraw.sender) {
+      journalTransactions.push(
+        await this.ledgerPipeline.createJournalTransaction(
           {
-            journalTransactionId: journalTransaction.id,
-            journalTransactionState: JOURNAL_TRANSACTION_STATE.REJECTED,
-            legs: getAccountingLegs(transaction),
-            onApplied: 'RELEASE',
-            updatedBy: createdBy,
+            uuidToken: withdraw.uuidToken,
+            idempotencyToken: sender.idempotencyToken,
+            transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
+            fromAccountId: sender.accountId ?? null,
+            sourceContent,
           },
           tx,
-        );
-      });
-
-      return toTransactionEntity(
-        transaction,
-        rejected.journalTransaction,
-        rejected.transactionStateId,
-        error instanceof Error ? error.message : String(error),
+        ),
       );
     }
 
-    const sent = await this.unitOfWork.execute(async (tx) => {
-      return this.ledgerPipeline.transition(
-        {
-          journalTransactionId: journalTransaction.id,
-          transactionHash: submission.transactionHash,
-          targetTransactionStateId: TRANSACTION_STATE.SENT.id,
-          expectedStateSequence: TRANSACTION_STATE_SEQUENCE,
-          legs: getAccountingLegs(transaction),
-          onApplied: 'ADVANCE',
-          updatedBy: createdBy,
-        },
-        tx,
-      );
-    });
+    return journalTransactions;
+  }
 
-    return toTransactionEntity(transaction, sent.journalTransaction, sent.transactionStateId);
+  private async createRecipientJournalTransactions(
+    withdraw: Withdraw,
+    tx: Parameters<Parameters<UnitOfWork['execute']>[0]>[0],
+  ): Promise<JournalTransaction[]> {
+    const sourceContent = JSON.stringify(withdraw);
+    const journalTransactions: JournalTransaction[] = [];
+
+    for (const recipient of withdraw.recipient.filter(isInternalRecipient)) {
+      journalTransactions.push(
+        await this.ledgerPipeline.createJournalTransaction(
+          {
+            uuidToken: withdraw.uuidToken,
+            idempotencyToken: recipient.idempotencyToken,
+            transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
+            toAccountId: recipient.accountId ?? null,
+            sourceContent,
+          },
+          tx,
+        ),
+      );
+    }
+
+    return journalTransactions;
+  }
+
+  private senderRequests(withdraw: Withdraw, senders: JournalTransaction[], targetStateId: number): TransitionRequest[] {
+    return senders.map((journalTransaction, i) => {
+      const item = withdraw.sender[i];
+      const legs: LedgerLeg[] = [{ item, amount: item.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT }];
+
+      if (i === 0) legs.push({ item: withdraw.fee, amount: withdraw.fee.quantity, purpose: BOOK_POSTING_PURPOSE.FEE });
+
+      return { journalTransaction, targetStateId, legs };
+    });
   }
 }

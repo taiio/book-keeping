@@ -6,5 +6,5 @@ export const TRANSACTION_TYPE = {
   RESTAKE: 5,
 } as const;
 
-export type TransactionType = (typeof TRANSACTION_TYPE)[keyof typeof TRANSACTION_TYPE];
+export type TransactionTypeId = (typeof TRANSACTION_TYPE)[keyof typeof TRANSACTION_TYPE];
 export type TransactionTypeCode = keyof typeof TRANSACTION_TYPE;

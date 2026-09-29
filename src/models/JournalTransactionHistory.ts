@@ -10,10 +10,6 @@ import type { JournalTransactionStateValue } from '../interfaces';
   timestamps: false,
 })
 export class JournalTransactionHistory extends Model {
-  // ============================================================
-  // Primary Key
-  // ============================================================
-
   @PrimaryKey
   @AutoIncrement
   @Column({
@@ -21,10 +17,6 @@ export class JournalTransactionHistory extends Model {
     allowNull: false,
   })
   declare id: number;
-
-  // ============================================================
-  // Transaction
-  // ============================================================
 
   @Column({
     field: 'history_transaction_type_id',
@@ -46,10 +38,6 @@ export class JournalTransactionHistory extends Model {
     as: 'journalTransaction',
   })
   declare journalTransaction: JournalTransaction;
-
-  // ============================================================
-  // External transaction
-  // ============================================================
 
   @Column({
     field: 'request_id',
@@ -90,10 +78,6 @@ export class JournalTransactionHistory extends Model {
     as: 'transactionState',
   })
   declare transactionState: TransactionState;
-
-  // ============================================================
-  // Audit
-  // ============================================================
 
   @Column({
     field: 'created_date',

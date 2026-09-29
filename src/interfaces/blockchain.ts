@@ -1,14 +1,23 @@
-import type { BLOCKCHAIN_TRANSACTION_STATUS } from '../constants';
+import type { BlockchainTransactionStatusId, BookPostingPurposeId } from '../constants';
 import type { Book } from '../models';
-import type { Transaction } from './transaction';
-
-export type BlockchainTransactionStatus = (typeof BLOCKCHAIN_TRANSACTION_STATUS)[keyof typeof BLOCKCHAIN_TRANSACTION_STATUS];
+import type { FeeItem, Transaction } from './transaction';
 
 export interface BlockchainSender {
+  idempotencyToken?: string;
   address: string;
-  assetTicker: string;
-  quantity: string;
+  assetTicker?: string;
+  quantity?: string;
   feePaid?: string;
+  account?: WithdrawalAccountIdentity;
+}
+
+export interface WithdrawalAccountIdentity {
+  clientId: number;
+  accountId: number;
+  assetId: number;
+  assetTicker: string;
+  assetTypeId: number;
+  walletTypeId: number;
 }
 
 export interface DepositAccountIdentity {
@@ -20,30 +29,32 @@ export interface DepositAccountIdentity {
 }
 
 export interface BlockchainRecipient {
+  idempotencyToken?: string;
   address: string;
   assetTicker: string;
   quantity: string;
-  type: 'AMOUNT' | 'REWARD';
+  type?: BookPostingPurposeId;
 
   account?: DepositAccountIdentity;
 }
 
 export interface BlockchainMessagePayload {
+  uuidToken?: string;
   transactionHash: string;
-
-  idempotencyToken: string;
   blockNumber?: number;
 
-  status: BlockchainTransactionStatus;
+  status: BlockchainTransactionStatusId;
 
   senders: BlockchainSender[];
 
   recipients: BlockchainRecipient[];
 
-  networkFee?: {
+  networkFee: {
+    idempotencyToken: string;
     payerAddress: string;
     assetTicker: string;
     quantity: string;
+    account?: FeeItem;
   };
 
   error?: {

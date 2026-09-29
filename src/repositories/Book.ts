@@ -28,6 +28,23 @@ export class BookRepository {
     });
   }
 
+  /**
+   * Find-only lookup (never creates). Used for books that must already exist, e.g. deposit-side custody books.
+   */
+  async findBook(params: BookLegParams, transaction: Transaction): Promise<Book | null> {
+    return Book.findOne({
+      where: {
+        clientId: params.clientId,
+        accountId: params.accountId,
+        assetTypeId: params.assetTypeId,
+        walletTypeId: params.walletTypeId,
+        bookPurposeId: params.bookPurposeId,
+        transactionStateId: params.transactionStateId,
+      },
+      transaction,
+    });
+  }
+
   async getOrCreateBook(params: BookLegParams, transaction: Transaction): Promise<GetOrCreateBookResult> {
     const [book, created] = await Book.findOrCreate({
       where: {
@@ -121,5 +138,10 @@ export class BookRepository {
     );
 
     return book;
+  }
+
+  //only testing
+  async initBalance(params: any, tx: Transaction): Promise<any> {
+    return Book.create(params);
   }
 }

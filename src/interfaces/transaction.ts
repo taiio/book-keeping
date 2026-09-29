@@ -1,7 +1,8 @@
-import type { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE } from '../constants';
-import type { JournalTransaction } from '../models';
+import type { JOURNAL_TRANSACTION_STATE, TRANSACTION_TYPE, TransactionStateId } from '../constants';
 
 export interface AccountItem {
+  idempotencyToken: string;
+
   clientId?: number;
   accountId?: number;
 
@@ -16,12 +17,19 @@ export interface AccountItem {
   address?: string;
 }
 
-export interface FeeItem {
-  clientId?: number;
-  accountId?: number;
+/**
+ * Minimal identity + asset shape needed to resolve a Book. Both AccountItem and FeeItem satisfy it.
+ */
+export type LegItem = Pick<AccountItem, 'clientId' | 'accountId' | 'assetTypeId' | 'walletTypeId' | 'assetId' | 'assetTicker'>;
 
-  assetTypeId?: number;
-  walletTypeId?: number;
+export interface FeeItem {
+  idempotencyToken: string;
+
+  clientId: number;
+  accountId: number;
+
+  assetTypeId: number;
+  walletTypeId: number;
 
   assetId: number;
   assetTicker: string;
@@ -30,22 +38,21 @@ export interface FeeItem {
 
 export type JournalTransactionStateValue = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
 
-export type TransactionStateCode = NonNullable<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['code']>;
-
 export interface TransactionBase {
-  idempotencyToken: string;
   uuidToken: string;
+  transactionHash?: string,
 }
 
 export interface Withdraw extends TransactionBase {
-  type: 'WITHDRAW';
+  type: typeof TRANSACTION_TYPE.WITHDRAW;
+
   sender: AccountItem[];
   recipient: AccountItem[];
   fee: FeeItem;
 }
 
 export interface Stake extends TransactionBase {
-  type: 'STAKE';
+  type: typeof TRANSACTION_TYPE.STAKE;
   sender: AccountItem;
   pool: {
     poolId: string;
@@ -55,7 +62,7 @@ export interface Stake extends TransactionBase {
 }
 
 export interface Unstake extends TransactionBase {
-  type: 'UNSTAKE';
+  type: typeof TRANSACTION_TYPE.UNSTAKE;
   sender: AccountItem;
   pool: {
     poolId: string;
@@ -66,7 +73,7 @@ export interface Unstake extends TransactionBase {
 }
 
 export interface Restake extends TransactionBase {
-  type: 'RESTAKE';
+  type: typeof TRANSACTION_TYPE.RESTAKE;
   sender: AccountItem;
   fromPool: {
     poolId: string;
@@ -87,7 +94,7 @@ export interface TransactionEntityBase {
   idempotencyToken: string;
   uuidToken: string;
 
-  state: TransactionStateCode;
+  transactionStateId: TransactionStateId;
 
   journalTransactionState: JournalTransactionStateValue;
 
@@ -105,22 +112,4 @@ export interface TransactionEntityBase {
 
   createdAt: Date;
   updatedAt: Date;
-}
-
-export type TransactionEntity = Transaction & TransactionEntityBase;
-
-export interface DepositTransactionEntity extends TransactionEntityBase {
-  type: 'DEPOSIT';
-  recipient: AccountItem;
-}
-
-export type BlockchainDrivenEntity = TransactionEntity | DepositTransactionEntity;
-
-export type AuthorizePhase = 'AUTHORIZED' | 'REJECTED' | 'REPLAYED';
-
-export interface AuthorizeResult {
-  phase: AuthorizePhase;
-  journalTransaction: JournalTransaction;
-  transactionStateId: number | null;
-  errorMessage?: string;
 }

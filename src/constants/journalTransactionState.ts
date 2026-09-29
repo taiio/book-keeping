@@ -5,9 +5,9 @@ export const JOURNAL_TRANSACTION_STATE = {
   REJECTED: 4,
 } as const;
 
-export type JournalTransactionState = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
+export type JournalTransactionStateId = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
 
-export const TERMINAL_JOURNAL_TRANSACTION_STATES: ReadonlySet<JournalTransactionState> = new Set([
+export const TERMINAL_JOURNAL_TRANSACTION_STATES: ReadonlySet<JournalTransactionStateId> = new Set([
   JOURNAL_TRANSACTION_STATE.COMPLETED,
   JOURNAL_TRANSACTION_STATE.FAILED,
   JOURNAL_TRANSACTION_STATE.REJECTED,

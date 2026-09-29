@@ -7,7 +7,7 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node --transpile-only src/index.ts",
     "sync-db": "ts-node scripts/sync-db.ts",
-    "test": "node --require ts-node/register --test src/test/*.test.ts",
+    "test": "jest",
     "test:manual": "ts-node src/test/run.ts",
     "test:di": "ts-node src/test/diSanityCheck.ts",
     "format": "prettier --write .",
@@ -23,9 +23,13 @@
     "tsyringe": "^4.10.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.4",
     "@types/validator": "^13.11.9",
+    "jest": "^30.5.2",
     "prettier": "^3.9.9",
+    "ts-jest": "^29.4.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   }

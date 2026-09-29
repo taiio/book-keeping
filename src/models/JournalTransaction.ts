@@ -11,6 +11,12 @@ import type { JournalTransactionStateValue } from '../interfaces';
 
   indexes: [
     {
+      // uuidToken identifies the SystemTransaction and is SHARED by every JournalTransaction of it
+      // (one per sender + one per internal recipient), so it is indexed but must not be unique.
+      name: 'idx_journal_transaction_uuid_token',
+      fields: ['uuid_token'],
+    },
+    {
       name: 'idx_journal_transaction_transaction_hash',
       fields: ['transaction_hash', 'request_id'],
     },
@@ -37,16 +43,15 @@ export class JournalTransaction extends Model {
     field: 'uuid_token',
     type: DataType.STRING(36),
     allowNull: false,
-    unique: true,
   })
   declare uuidToken: string;
 
   @Column({
     field: 'transaction_type_id',
     type: DataType.INTEGER,
-    allowNull: true,
+    allowNull: false,
   })
-  declare transactionTypeId: number | null;
+  declare transactionTypeId: number;
 
   @Column({
     field: 'from_account_id',
@@ -84,11 +89,6 @@ export class JournalTransaction extends Model {
   })
   declare sourceContent: string | null;
 
-  /**
-   * Bất biến kể từ khi journal xuất hiện (AUTHORIZING với transaction do hệ thống khởi tạo, CONFIRMING với
-   * DEPOSIT) — chỉ dùng để get-or-create/tra cứu, KHÔNG bao giờ bị ghi đè sau đó (xem
-   * JournalTransactionRepository, không có logic update trường này).
-   */
   @Column({
     field: 'idempotency_token',
     type: DataType.STRING(255),
@@ -144,10 +144,6 @@ export class JournalTransaction extends Model {
     allowNull: true,
   })
   declare updatedBy: number | null;
-
-  // ============================================================
-  // Associations
-  // ============================================================
 
   @HasMany(() => JournalTransactionHistory, {
     foreignKey: 'journalTransactionId',

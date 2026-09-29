@@ -17,3 +17,5 @@ export const BOOK_PURPOSE = {
 export type BookPurposeId = (typeof BOOK_PURPOSE)[keyof typeof BOOK_PURPOSE]['id'];
 
 export type BookPurposeCode = (typeof BOOK_PURPOSE)[keyof typeof BOOK_PURPOSE]['code'];
+
+export type BookPurpose = (typeof BOOK_PURPOSE)[keyof typeof BOOK_PURPOSE];

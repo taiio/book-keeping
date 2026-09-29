@@ -11,3 +11,17 @@ export class NotFoundError extends Error {
     this.name = 'NotFoundError';
   }
 }
+
+export class InvalidTransitionError extends Error {
+  constructor(journalTransactionId: number, currentStateId: number | null, targetStateId: number) {
+    super(`Invalid transition: journalTransaction=${journalTransactionId}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}`);
+    this.name = 'InvalidTransitionError';
+  }
+}
+
+export class UnsupportedOperationError extends Error {
+  constructor(message: string) {
+    super(`Unsupported (happy-path only): ${message}`);
+    this.name = 'UnsupportedOperationError';
+  }
+}

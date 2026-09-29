@@ -87,16 +87,6 @@ export interface UpdateJournalTransactionParams {
   updatedBy?: number;
 }
 
-export type JournalTransitionOutcome = 'APPLIED' | 'REPLAYED_NOOP' | 'REJECTED_INVALID_TRANSITION';
-
-export interface UpdateJournalTransactionResult {
-  journalTransaction: JournalTransaction;
-  outcome: JournalTransitionOutcome;
-  previousTransactionStateId: number | null;
-
-  transactionStateId: number | null;
-}
-
 export interface RecordJournalTransactionHistoryParams {
   journalTransaction: JournalTransaction;
   historyTransactionTypeId: number;
