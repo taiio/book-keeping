@@ -9,7 +9,7 @@ import { LedgerPipeline } from '../ledger/LedgerPipeline';
 import type { JournalTransaction } from '../models';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
-import type { AccountItem, GetOrCreateJournalTransactionParams, SystemTransactionResult, TransitionRequest, Withdraw } from '../types';
+import type { AccountItem, GetOrCreateJournalTransactionParams, LedgerLeg, SystemTransactionResult, TransitionRequest, Withdraw } from '../types';
 
 type JournalTransactionSide = Pick<GetOrCreateJournalTransactionParams, 'transactionTypeId' | 'fromAccountId' | 'toAccountId'>;
 
@@ -214,59 +214,26 @@ export class SystemTransactionHandler {
         throw new Error(`Sender journal transaction not found: ${sender.idempotencyToken}`);
       }
 
+      const legs: LedgerLeg[] = [
+        {
+          item: toLegItem(sender.account!, sender.assetTicker),
+          amount: sender.quantity,
+          purpose: BOOK_POSTING_PURPOSE.AMOUNT,
+        },
+      ];
+
+      if (withdraw.fee.idempotencyToken === sender.idempotencyToken) {
+        legs.push({
+          item: toLegItem(withdraw.fee.account, withdraw.fee.assetTicker),
+          amount: withdraw.fee.quantity,
+          purpose: BOOK_POSTING_PURPOSE.FEE,
+        });
+      }
+
       requests.push({
         journalTransaction,
         targetStateId: withdraw.transactionStateId,
-        legs: [
-          {
-            item: toLegItem(sender.account!, sender.assetTicker),
-            amount: sender.quantity,
-            purpose: BOOK_POSTING_PURPOSE.AMOUNT,
-          },
-        ],
-      });
-    }
-
-    const fee = withdraw.fee;
-    const feeAccountId = fee.account!.accountId;
-
-    const sameAccountSender = withdraw.sender.find((sender) => sender.account!.accountId === feeAccountId);
-
-    if (sameAccountSender) {
-      const journalTransaction = senders.find((jt) => jt.idempotencyToken === sameAccountSender.idempotencyToken);
-
-      if (!journalTransaction) {
-        throw new Error(`Sender journal transaction not found: ${sameAccountSender.idempotencyToken}`);
-      }
-
-      const request = requests.find((item) => item.journalTransaction.id === journalTransaction.id);
-
-      if (!request) {
-        throw new Error(`Transition request not found for journal transaction ${journalTransaction.id}`);
-      }
-
-      request.legs.push({
-        item: toLegItem(fee.account!, fee.assetTicker),
-        amount: fee.quantity,
-        purpose: BOOK_POSTING_PURPOSE.FEE,
-      });
-    } else {
-      const feeJournalTransaction = senders.find((jt) => jt.idempotencyToken === fee.idempotencyToken);
-
-      if (!feeJournalTransaction) {
-        throw new Error(`Fee journal transaction not found: ${fee.idempotencyToken}`);
-      }
-
-      requests.push({
-        journalTransaction: feeJournalTransaction,
-        targetStateId: withdraw.transactionStateId,
-        legs: [
-          {
-            item: toLegItem(fee.account!, fee.assetTicker),
-            amount: fee.quantity,
-            purpose: BOOK_POSTING_PURPOSE.FEE,
-          },
-        ],
+        legs,
       });
     }
 

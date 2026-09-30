@@ -49,6 +49,19 @@ async function main() {
           assetId: 1,
         },
       },
+      {
+        idempotencyToken: idempotencyFee,
+        address: feeAddress,
+        assetTicker: 'ETH',
+        quantity: '1',
+        account: {
+          clientId: 1,
+          accountId: 3,
+          assetTypeId: 2,
+          walletTypeId: 1,
+          assetId: 30,
+        },
+      },
     ],
     recipient: [
       {
@@ -113,6 +126,19 @@ async function main() {
           assetTypeId: 1,
           walletTypeId: 1,
           assetId: 1,
+        },
+      },
+      {
+        idempotencyToken: idempotencyFee,
+        address: feeAddress,
+        assetTicker: 'ETH',
+        quantity: '1',
+        account: {
+          clientId: 1,
+          accountId: 3,
+          assetTypeId: 2,
+          walletTypeId: 1,
+          assetId: 30,
         },
       },
     ],

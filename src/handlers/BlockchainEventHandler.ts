@@ -118,7 +118,7 @@ export class BlockchainEventHandler {
 
     const fee = payload.networkFee;
 
-    if (fee.account && fee.account.accountId === journalTransaction.fromAccountId) {
+    if (fee.account && fee.idempotencyToken === sender.idempotencyToken && fee.account.accountId === sender.account.accountId) {
       legs.push({
         item: toLegItem(fee.account, fee.assetTicker),
         amount: fee.quantity,
