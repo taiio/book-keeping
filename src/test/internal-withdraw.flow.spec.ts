@@ -53,7 +53,7 @@ async function main() {
         idempotencyToken: idempotencyFee,
         address: feeAddress,
         assetTicker: 'ETH',
-        quantity: '1',
+        quantity: '2',
         account: {
           clientId: 1,
           accountId: 3,
@@ -132,7 +132,7 @@ async function main() {
         idempotencyToken: idempotencyFee,
         address: feeAddress,
         assetTicker: 'ETH',
-        quantity: '1',
+        quantity: '2',
         account: {
           clientId: 1,
           accountId: 3,

@@ -40,13 +40,14 @@ export class SystemTransactionHandler {
     const existing = await this.unitOfWork.execute((tx) => this.ledgerPipeline.findByUuidToken(withdraw.uuidToken, tx));
 
     const senders = existing.filter((jt) => jt.transactionTypeId === TRANSACTION_TYPE.WITHDRAW);
+
     const recipients = existing.filter((jt) => jt.transactionTypeId === TRANSACTION_TYPE.DEPOSIT);
 
     if (!senders.length) {
       throw new Error(`No sender journal transactions found for uuidToken=${withdraw.uuidToken}`);
     }
 
-    await this.unitOfWork.execute((tx) => this.ledgerPipeline.processTransition(this.senderRequests(withdraw, senders), tx));
+    await this.unitOfWork.execute((tx) => this.ledgerPipeline.processTransition(this.buildTransitionRequests(withdraw, senders), tx));
 
     if (transactionStateId !== TRANSACTION_STATE.SENT.id) {
       return this.buildResult(withdraw, senders, recipients);
@@ -70,7 +71,7 @@ export class SystemTransactionHandler {
       const senders = await this.createSenderJournalTransactions(withdraw, tx);
       const recipients = await this.createRecipientJournalTransactions(withdraw, tx);
 
-      await this.ledgerPipeline.processTransition(this.senderRequests(withdraw, senders), tx);
+      await this.ledgerPipeline.processTransition(this.buildTransitionRequests(withdraw, senders), tx);
 
       return { senders, recipients };
     });
@@ -93,9 +94,17 @@ export class SystemTransactionHandler {
       throw new UnsupportedOperationError(`transaction type ${(withdraw as { type: number }).type}`);
     }
 
-    if (!withdraw.uuidToken) throw new Error('uuidToken is required');
-    if (!withdraw.sender?.length) throw new Error('At least one sender is required');
-    if (!withdraw.fee) throw new Error('Exactly one fee is required');
+    if (!withdraw.uuidToken) {
+      throw new Error('uuidToken is required');
+    }
+
+    if (!withdraw.sender?.length) {
+      throw new Error('At least one sender is required');
+    }
+
+    if (!withdraw.fee) {
+      throw new Error('Exactly one fee is required');
+    }
 
     this.validateState(withdraw.transactionStateId);
 
@@ -145,17 +154,16 @@ export class SystemTransactionHandler {
       );
     }
 
-    const feeAccountId = withdraw.fee.account!.accountId;
-    const senderAccountIds = new Set(withdraw.sender.map((sender) => sender.account!.accountId));
+    const feeBelongsToSender = withdraw.sender.some((sender) => sender.idempotencyToken === withdraw.fee.idempotencyToken);
 
-    if (!senderAccountIds.has(feeAccountId)) {
+    if (!feeBelongsToSender) {
       journalTransactions.push(
         await this.ledgerPipeline.createJournalTransaction(
           {
             uuidToken: withdraw.uuidToken,
             idempotencyToken: withdraw.fee.idempotencyToken,
             transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
-            fromAccountId: feeAccountId,
+            fromAccountId: withdraw.fee.account.accountId,
             sourceContent,
           },
           tx,
@@ -204,6 +212,17 @@ export class SystemTransactionHandler {
     return journalTransactions;
   }
 
+  private buildTransitionRequests(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest[] {
+    const requests = this.senderRequests(withdraw, senders);
+    const feeRequest = this.feeRequest(withdraw, senders);
+
+    if (feeRequest) {
+      requests.push(feeRequest);
+    }
+
+    return requests;
+  }
+
   private senderRequests(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest[] {
     const requests: TransitionRequest[] = [];
 
@@ -238,6 +257,32 @@ export class SystemTransactionHandler {
     }
 
     return requests;
+  }
+
+  private feeRequest(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest | null {
+    const fee = withdraw.fee;
+
+    if (withdraw.sender.some((sender) => sender.idempotencyToken === fee.idempotencyToken)) {
+      return null;
+    }
+
+    const journalTransaction = senders.find((jt) => jt.idempotencyToken === fee.idempotencyToken);
+
+    if (!journalTransaction) {
+      throw new Error(`Fee journal transaction not found: ${fee.idempotencyToken}`);
+    }
+
+    return {
+      journalTransaction,
+      targetStateId: withdraw.transactionStateId,
+      legs: [
+        {
+          item: toLegItem(fee.account, fee.assetTicker),
+          amount: fee.quantity,
+          purpose: BOOK_POSTING_PURPOSE.FEE,
+        },
+      ],
+    };
   }
 
   private buildResult(
