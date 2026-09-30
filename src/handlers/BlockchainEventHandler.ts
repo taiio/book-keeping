@@ -33,6 +33,7 @@ export class BlockchainEventHandler {
         }
 
         journalTransactions = await this.createDepositJournalTransactions(payload, tx);
+        journalTransactions = await this.createFeeJournalTransaction(payload, journalTransactions, tx);
       }
 
       const requests = journalTransactions.map((journalTransaction) => this.buildRequest(journalTransaction, payload));
@@ -46,22 +47,24 @@ export class BlockchainEventHandler {
       throw new UnsupportedOperationError('Blockchain transactionHash is required');
     }
 
-    if (payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMING && payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMED) {
+    if (
+      payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMING &&
+      payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMED
+    ) {
       throw new UnsupportedOperationError(`blockchain status ${payload.status}`);
     }
   }
 
   private buildRequest(journalTransaction: JournalTransaction, payload: BlockchainMessagePayload): TransitionRequest {
-    const legs =
-      journalTransaction.transactionTypeId === TRANSACTION_TYPE.WITHDRAW
+    const isFee = journalTransaction.idempotencyToken === payload.networkFee.idempotencyToken;
+
+    const legs = isFee
+      ? this.feeLegs(journalTransaction, payload)
+      : journalTransaction.transactionTypeId === TRANSACTION_TYPE.WITHDRAW
         ? this.senderLegs(journalTransaction, payload)
         : this.recipientLegs(journalTransaction, payload);
 
-    return {
-      journalTransaction,
-      targetStateId: payload.status,
-      legs,
-    };
+    return { journalTransaction, targetStateId: payload.status, legs };
   }
 
   private async createDepositJournalTransactions(payload: BlockchainMessagePayload, tx: Transaction): Promise<JournalTransaction[]> {
@@ -72,125 +75,106 @@ export class BlockchainEventHandler {
     }
 
     const uuidToken = payload.uuidToken ?? randomUUID();
-
     const journalTransactions: JournalTransaction[] = [];
 
     for (const recipient of internalRecipients) {
-      const journalTransaction = await this.ledgerPipeline.createJournalTransaction(
-        {
+      journalTransactions.push(
+        await this.ledgerPipeline.createJournalTransaction({
           uuidToken,
           idempotencyToken: recipient.idempotencyToken,
           transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
           toAccountId: recipient.account!.accountId,
           transactionHash: payload.transactionHash,
           sourceContent: null,
-        },
-        tx,
+        }, tx),
       );
-
-      journalTransactions.push(journalTransaction);
     }
 
     return journalTransactions;
   }
 
+  private async createFeeJournalTransaction(
+    payload: BlockchainMessagePayload,
+    journalTransactions: JournalTransaction[],
+    tx: Transaction,
+  ): Promise<JournalTransaction[]> {
+    const fee = payload.networkFee;
+
+    if (!fee.account) return journalTransactions;
+
+    const existingFeeJournal = journalTransactions.find(
+      (journalTransaction) => journalTransaction.idempotencyToken === fee.idempotencyToken,
+    );
+
+    if (existingFeeJournal) return journalTransactions;
+
+    const hasInternalSender = payload.senders.some((sender) => sender.account);
+
+    if (!hasInternalSender) return journalTransactions;
+
+    const feeJournalTransaction = await this.ledgerPipeline.createJournalTransaction({
+      uuidToken: payload.uuidToken ?? randomUUID(),
+      idempotencyToken: fee.idempotencyToken,
+      transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
+      fromAccountId: fee.account.accountId,
+      transactionHash: payload.transactionHash,
+      sourceContent: null,
+    }, tx);
+
+    return [...journalTransactions, feeJournalTransaction];
+  }
+
   private senderLegs(journalTransaction: JournalTransaction, payload: BlockchainMessagePayload): LedgerLeg[] {
-    const accountId = journalTransaction.fromAccountId;
-
-    if (accountId == null) {
-      throw new NotFoundError('fromAccountId for sender JournalTransaction', journalTransaction.id);
-    }
-
-    const sender = payload.senders.find((item) => item.account?.accountId === accountId);
+    const sender = payload.senders.find(
+      (item) => item.idempotencyToken === journalTransaction.idempotencyToken,
+    );
 
     if (!sender?.account) {
-      throw new NotFoundError('Blockchain sender account for JournalTransaction', journalTransaction.id);
+      throw new NotFoundError('Blockchain sender for JournalTransaction', journalTransaction.id);
     }
 
     if (!sender.assetTicker) {
       throw new NotFoundError('Blockchain sender assetTicker for JournalTransaction', journalTransaction.id);
     }
 
-    const legs: LedgerLeg[] = [
-      {
-        item: toLegItem(sender.account, sender.assetTicker),
-        amount: sender.quantity || '0',
-        purpose: BOOK_POSTING_PURPOSE.AMOUNT,
-      },
-    ];
+    return [{
+      item: toLegItem(sender.account, sender.assetTicker),
+      amount: sender.quantity,
+      purpose: BOOK_POSTING_PURPOSE.AMOUNT,
+    }];
+  }
 
-    const { networkFee } = payload;
+  private feeLegs(journalTransaction: JournalTransaction, payload: BlockchainMessagePayload): LedgerLeg[] {
+    const fee = payload.networkFee;
 
-    if (networkFee.account && networkFee.account.accountId === accountId) {
-      legs.push({
-        item: toLegItem(networkFee.account, networkFee.assetTicker),
-        amount: networkFee.quantity,
-        purpose: BOOK_POSTING_PURPOSE.FEE,
-      });
+    if (fee.idempotencyToken !== journalTransaction.idempotencyToken) {
+      throw new NotFoundError('Blockchain fee for JournalTransaction', journalTransaction.id);
     }
 
-    return legs;
+    if (!fee.account) {
+      throw new NotFoundError('Blockchain fee account for JournalTransaction', journalTransaction.id);
+    }
+
+    return [{
+      item: toLegItem(fee.account, fee.assetTicker),
+      amount: fee.quantity,
+      purpose: BOOK_POSTING_PURPOSE.FEE,
+    }];
   }
 
   private recipientLegs(journalTransaction: JournalTransaction, payload: BlockchainMessagePayload): LedgerLeg[] {
-    const accountId = journalTransaction.toAccountId;
-
-    if (accountId == null) {
-      throw new NotFoundError('toAccountId for recipient JournalTransaction', journalTransaction.id);
-    }
-
     const recipient = payload.recipients.find(
-      (item) => item.account?.accountId === accountId && item.idempotencyToken === journalTransaction.idempotencyToken,
+      (item) => item.idempotencyToken === journalTransaction.idempotencyToken,
     );
 
     if (!recipient?.account) {
       throw new NotFoundError('Blockchain recipient for JournalTransaction', journalTransaction.id);
     }
 
-    return [
-      {
-        item: toLegItem(recipient.account, recipient.assetTicker),
-        amount: recipient.quantity,
-        purpose: BOOK_POSTING_PURPOSE.AMOUNT,
-      },
-    ];
-  }
-
-  private async createFeeJournalTransaction(
-    payload: BlockchainMessagePayload,
-    internalSenderExists: boolean,
-    existingJournalTransactions: JournalTransaction[],
-    tx: Transaction,
-  ): Promise<JournalTransaction | null> {
-    if (!internalSenderExists) {
-      return null;
-    }
-
-    const feeAccount = payload.networkFee.account;
-
-    if (!feeAccount) {
-      return null;
-    }
-
-    const feeAlreadyBelongsToSender = existingJournalTransactions.some(
-      (journalTransaction) =>
-        journalTransaction.transactionTypeId === TRANSACTION_TYPE.WITHDRAW && journalTransaction.fromAccountId === feeAccount.accountId,
-    );
-
-    if (feeAlreadyBelongsToSender) {
-      return null;
-    }
-
-    return this.ledgerPipeline.createJournalTransaction(
-      {
-        uuidToken: payload.uuidToken ?? randomUUID(),
-        idempotencyToken: payload.networkFee.idempotencyToken,
-        transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
-        fromAccountId: feeAccount.accountId,
-        transactionHash: payload.transactionHash,
-        sourceContent: null,
-      },
-      tx,
-    );
+    return [{
+      item: toLegItem(recipient.account, recipient.assetTicker),
+      amount: recipient.quantity,
+      purpose: BOOK_POSTING_PURPOSE.AMOUNT,
+    }];
   }
 }

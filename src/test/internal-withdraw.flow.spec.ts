@@ -25,6 +25,7 @@ async function main() {
   const senderAddress = '66f83428e0f1dd12d40933d9ed081bab3';
   const recipentAddress1 = '66f83428e0f1dd12d40933d9ed081bab4';
   const recipentAddress2 = '66f83428e0f1dd12d40933d9ed081bab5';
+  const feeAddress = '66f83428e0f1dd12d40933d9ed081bab6';
   const idempotencySender = randomUUID();
   const idempotencyRecipent1 = randomUUID();
   const idempotencyRecipent2 = randomUUID();
@@ -73,7 +74,7 @@ async function main() {
           accountId: 3,
           assetTypeId: 1,
           walletTypeId: 1,
-          assetId: 1,
+          assetId: 4,
         },
       },
     ],
@@ -83,10 +84,10 @@ async function main() {
       quantity: '1',
       account: {
         clientId: 1,
-        accountId: 1,
+        accountId: 3,
         assetTypeId: 2,
         walletTypeId: 1,
-        assetId: 2,
+        assetId: 30,
       },
     },
   };
@@ -139,22 +140,21 @@ async function main() {
           accountId: 3,
           assetTypeId: 1,
           walletTypeId: 1,
-          assetId: 1,
+          assetId: 4,
         },
       },
     ],
     networkFee: {
       idempotencyToken: idempotencyFee,
-      payerAddress: senderAddress,
       assetTicker: 'ETH',
+      payerAddress: feeAddress,
       quantity: '1',
       account: {
-        idempotencyToken: idempotencyFee,
         clientId: 1,
-        accountId: 1,
+        accountId: 3,
         assetTypeId: 2,
         walletTypeId: 1,
-        assetId: 2,
+        assetId: 30,
       },
     },
   };

@@ -11,6 +11,7 @@
     "test:manual": "ts-node src/test/run.ts",
     "test:di": "ts-node src/test/diSanityCheck.ts",
     "format": "prettier --write .",
+    "internal-withdraw": "ts-node src/test/internal-withdraw.flow.spec.ts",
     "format:check": "prettier --check ."
   },
   "dependencies": {

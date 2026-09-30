@@ -8,10 +8,8 @@ export interface BlockchainParty {
 }
 
 export interface BlockchainSender extends BlockchainParty {
-  assetTicker?: string;
-  quantity?: string;
-  feePaid?: string;
-
+  assetTicker: string;
+  quantity: string;
   /** Internal account identity only; the asset (`assetTicker`/`quantity`) lives on the sender itself. */
   account?: AccountIdentity;
 }
