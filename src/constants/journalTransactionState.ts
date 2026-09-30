@@ -1,3 +1,5 @@
+import type { ValueOf } from '../types/common';
+
 export const JOURNAL_TRANSACTION_STATE = {
   ACTIVE: 1,
   COMPLETED: 2,
@@ -5,7 +7,9 @@ export const JOURNAL_TRANSACTION_STATE = {
   REJECTED: 4,
 } as const;
 
-export type JournalTransactionStateId = (typeof JOURNAL_TRANSACTION_STATE)[keyof typeof JOURNAL_TRANSACTION_STATE];
+export type JournalTransactionStateId = ValueOf<typeof JOURNAL_TRANSACTION_STATE>;
+
+export const JOURNAL_TRANSACTION_STATE_IDS: readonly JournalTransactionStateId[] = Object.values(JOURNAL_TRANSACTION_STATE);
 
 export const TERMINAL_JOURNAL_TRANSACTION_STATES: ReadonlySet<JournalTransactionStateId> = new Set([
   JOURNAL_TRANSACTION_STATE.COMPLETED,

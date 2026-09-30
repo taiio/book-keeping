@@ -1,3 +1,5 @@
+import type { ValueOf } from '../types/common';
+
 export const TRANSACTION_STATE = {
   /**
    * Supports the EXTERNAL blockchain book, which has no detailed transaction state.
@@ -61,11 +63,11 @@ export const TRANSACTION_STATE = {
   },
 } as const;
 
-type NonNull<T> = Exclude<T, null>;
+export type TransactionStateDefinition = ValueOf<typeof TRANSACTION_STATE>;
 
-export type TransactionStateId = NonNull<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['id']>;
+export type TransactionStateId = NonNullable<TransactionStateDefinition['id']>;
 
-export type TransactionStateCode = NonNull<(typeof TRANSACTION_STATE)[keyof typeof TRANSACTION_STATE]['code']>;
+export type TransactionStateCode = NonNullable<TransactionStateDefinition['code']>;
 
 export const TRANSACTION_STATE_SEQUENCE = [
   TRANSACTION_STATE.AUTHORIZING.id,
@@ -85,7 +87,6 @@ export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Ob
     .map((state) => [state.id, state.code]),
 ) as Record<number, string>;
 
-export const TRANSACTION_STATE_IDS_FAILABLE_BY_BLOCKCHAIN: readonly number[] = [TRANSACTION_STATE.SENT.id, TRANSACTION_STATE.CONFIRMING.id];
 
 export const TRANSACTION_STATE_TRANSITIONS = {
   AUTHORIZING: [TRANSACTION_STATE.AUTHORIZED.code, TRANSACTION_STATE.REJECTED.code],

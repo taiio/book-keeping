@@ -2,8 +2,8 @@ import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Ind
 
 import { JournalTransactionHistory } from './JournalTransactionHistory';
 import { BookPosting } from './BookPosting';
-import { JOURNAL_TRANSACTION_STATE } from '../constants';
-import type { JournalTransactionStateValue } from '../interfaces';
+import { JOURNAL_TRANSACTION_STATE_IDS } from '../constants';
+import type { JournalTransactionStateId } from '../constants';
 
 @Table({
   tableName: 'journal_transaction',
@@ -11,8 +11,6 @@ import type { JournalTransactionStateValue } from '../interfaces';
 
   indexes: [
     {
-      // uuidToken identifies the SystemTransaction and is SHARED by every JournalTransaction of it
-      // (one per sender + one per internal recipient), so it is indexed but must not be unique.
       name: 'idx_journal_transaction_uuid_token',
       fields: ['uuid_token'],
     },
@@ -23,9 +21,6 @@ import type { JournalTransactionStateValue } from '../interfaces';
   ],
 })
 export class JournalTransaction extends Model {
-  // ============================================================
-  // Primary Key
-  // ============================================================
 
   @PrimaryKey
   @AutoIncrement
@@ -34,10 +29,6 @@ export class JournalTransaction extends Model {
     allowNull: false,
   })
   declare id: number;
-
-  // ============================================================
-  // UUID
-  // ============================================================
 
   @Column({
     field: 'uuid_token',
@@ -87,12 +78,10 @@ export class JournalTransaction extends Model {
     type: DataType.INTEGER,
     allowNull: false,
     validate: {
-      isIn: [
-        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
-      ],
+      isIn: [[...JOURNAL_TRANSACTION_STATE_IDS]],
     },
   })
-  declare journalTransactionState: JournalTransactionStateValue;
+  declare journalTransactionState: JournalTransactionStateId;
 
   @Column({
     field: 'idempotency_token',
@@ -108,6 +97,7 @@ export class JournalTransaction extends Model {
     allowNull: true,
   })
   declare sourceContent: string | null;
+
   @Column({
     field: 'business_post_date_time',
     type: DataType.DATE,

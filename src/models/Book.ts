@@ -121,7 +121,7 @@ export class Book extends Model {
     type: DataType.STRING(255),
     allowNull: true,
   })
-  declare address: string | null; // the address is the node address. just only support when we staking. default null.
+  declare address: string | null;
 
   @Column({
     field: 'created_date',
@@ -151,10 +151,6 @@ export class Book extends Model {
     allowNull: true,
   })
   declare updatedBy: number | null;
-
-  // ============================================================
-  // Associations
-  // ============================================================
 
   @HasMany(() => BookPosting, {
     foreignKey: 'bookId',

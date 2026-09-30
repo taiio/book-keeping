@@ -8,10 +8,6 @@ import { BookPosting } from './BookPosting';
   timestamps: false,
 })
 export class BookHistory extends Model {
-  // ============================================================
-  // Primary Key
-  // ============================================================
-
   @PrimaryKey
   @AutoIncrement
   @Column({
@@ -20,20 +16,12 @@ export class BookHistory extends Model {
   })
   declare id: number;
 
-  // ============================================================
-  // Transaction
-  // ============================================================
-
   @Column({
     field: 'history_transaction_type_id',
     type: DataType.INTEGER,
     allowNull: false,
   })
   declare historyTransactionTypeId: number;
-
-  // ============================================================
-  // Book
-  // ============================================================
 
   @ForeignKey(() => Book)
   @Column({
@@ -49,10 +37,6 @@ export class BookHistory extends Model {
   })
   declare book: Book;
 
-  // ============================================================
-  // Posting
-  // ============================================================
-
   @ForeignKey(() => BookPosting)
   @Column({
     field: 'book_posting_id',
@@ -67,20 +51,12 @@ export class BookHistory extends Model {
   })
   declare posting: BookPosting;
 
-  // ============================================================
-  // Balance
-  // ============================================================
-
   @Column({
     type: DataType.DECIMAL(65, 0),
     allowNull: false,
     defaultValue: '0',
   })
   declare amount: string;
-
-  // ============================================================
-  // Sequence
-  // ============================================================
 
   @Column({
     field: 'last_sequence_no',
@@ -89,10 +65,6 @@ export class BookHistory extends Model {
     defaultValue: 0,
   })
   declare lastSequenceNo: number;
-
-  // ============================================================
-  // Audit
-  // ============================================================
 
   @Column({
     field: 'created_date',

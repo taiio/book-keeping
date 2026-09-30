@@ -1,14 +1,11 @@
 import { BOOK_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import type { BookRef, LedgerMovement } from '../types';
 
 const S = TRANSACTION_STATE;
 
-export type BookRef = { bookPurposeId: number; transactionStateId: number | null };
-
-export type LedgerMovement = { from: BookRef; to: BookRef };
-
 export const custodyBook = (stateId: number): BookRef => ({ bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id, transactionStateId: stateId });
 
-export const externalBook = (): BookRef => ({ bookPurposeId: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id, transactionStateId: null });
+export const externalBook = (): BookRef => ({ bookPurposeId: BOOK_PURPOSE.BLOCKCHAIN_EXTERNAL_ACCOUNT.id, transactionStateId: null });
 
 export const LEDGER_MOVEMENTS: Readonly<Record<number, Readonly<Record<number, LedgerMovement>>>> = {
   [TRANSACTION_TYPE.WITHDRAW]: {

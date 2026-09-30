@@ -1,14 +1,14 @@
 import 'reflect-metadata';
 import { container } from 'tsyringe';
-import { BOOK_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../../src/constants';
-import { BookRepository } from '../../src/repositories/Book';
-import { BlockchainEventHandler } from '../../src/handler/BlockchainEventHandler';
-import { SystemTransactionHandler, BLOCKCHAIN_SUBMITTER } from '../../src/handler/SystemTransactionHandler';
-import { UnitOfWork } from '../../src/common/UnitOfWork';
-import type { IBlockchainSubmitter, Withdraw } from '../../src/interfaces';
-import type { BlockchainMessagePayload } from '../interfaces';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
+
 import { sequelize } from '../config/database';
+import { TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
+import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
+import { BLOCKCHAIN_SUBMITTER } from '../ports';
+import type { IBlockchainSubmitter } from '../ports';
+import type { BlockchainMessagePayload, Withdraw } from '../types';
 
 const transactionHash = randomBytes(32).toString('hex');
 const mockSubmitter: IBlockchainSubmitter = {
@@ -83,9 +83,9 @@ async function main() {
     },
   };
 
-await systemTransactionHandler.handle({...withdraw, transactionStateId: 1});
-await systemTransactionHandler.handle({...withdraw, transactionStateId: 2})
-await systemTransactionHandler.handle({...withdraw, transactionStateId: 3})
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.AUTHORIZING.id });
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.AUTHORIZED.id });
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.SENT.id });
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,
@@ -97,8 +97,8 @@ await systemTransactionHandler.handle({...withdraw, transactionStateId: 3})
         idempotencyToken: idempotencySender,
         address: senderAddress,
         quantity: '100',
+        assetTicker: 'USDT',
         account: {
-          assetTicker: 'USDT',
           clientId: 1,
           accountId: 1,
           assetTypeId: 1,
@@ -147,8 +147,6 @@ await systemTransactionHandler.handle({...withdraw, transactionStateId: 3})
         assetTypeId: 2,
         walletTypeId: 1,
         assetId: 2,
-        assetTicker: 'ETH',
-        quantity: '1',
       },
     },
   };

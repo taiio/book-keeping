@@ -2,8 +2,8 @@ import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, ForeignKey, 
 
 import { JournalTransaction } from './JournalTransaction';
 import { TransactionState } from './TransactionState';
-import { JOURNAL_TRANSACTION_STATE } from '../constants';
-import type { JournalTransactionStateValue } from '../interfaces';
+import { JOURNAL_TRANSACTION_STATE_IDS } from '../constants';
+import type { JournalTransactionStateId } from '../constants';
 
 @Table({
   tableName: 'journal_transaction_history',
@@ -44,12 +44,10 @@ export class JournalTransactionHistory extends Model {
     type: DataType.INTEGER,
     allowNull: false,
     validate: {
-      isIn: [
-        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
-      ],
+      isIn: [[...JOURNAL_TRANSACTION_STATE_IDS]],
     },
   })
-  declare journalTransactionState: JournalTransactionStateValue;
+  declare journalTransactionState: JournalTransactionStateId;
 
   @Column({
     field: 'request_id',

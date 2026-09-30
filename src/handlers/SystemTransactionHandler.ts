@@ -1,14 +1,19 @@
-import { inject, autoInjectable, singleton } from 'tsyringe';
+import type { Transaction } from 'sequelize';
+import { autoInjectable, inject, singleton } from 'tsyringe';
 
-import { UnitOfWork } from '../common/UnitOfWork';
 import { UnsupportedOperationError } from '../common/errors';
+import { UnitOfWork } from '../common/UnitOfWork';
 import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
-import type { IBlockchainSubmitter, LedgerLeg, TransitionRequest, Withdraw } from '../interfaces';
+import { isInternalRecipient } from '../helpers';
+import { LedgerPipeline } from '../ledger/LedgerPipeline';
 import type { JournalTransaction } from '../models';
-import { LedgerPipeline } from './LedgerPipeline';
-import { isInternalRecipient, type SystemTransactionResult } from '../interfaces/SystemTransactionHandler';
+import { BLOCKCHAIN_SUBMITTER } from '../ports';
+import type { IBlockchainSubmitter } from '../ports';
+import type { AccountItem, GetOrCreateJournalTransactionParams, LedgerLeg, SystemTransactionResult, TransitionRequest, Withdraw } from '../types';
 
-export const BLOCKCHAIN_SUBMITTER = 'IBlockchainSubmitter';
+type JournalTransactionSide = Pick<GetOrCreateJournalTransactionParams, 'transactionTypeId' | 'fromAccountId' | 'toAccountId'>;
+
+const SUPPORTED_SYSTEM_STATE_IDS: readonly number[] = [TRANSACTION_STATE.AUTHORIZING.id, TRANSACTION_STATE.AUTHORIZED.id, TRANSACTION_STATE.SENT.id];
 
 @singleton()
 @autoInjectable()
@@ -88,51 +93,44 @@ export class SystemTransactionHandler {
   }
 
   private validateState(transactionStateId: number): void {
-    const supportedStates = [TRANSACTION_STATE.AUTHORIZING.id, TRANSACTION_STATE.AUTHORIZED.id, TRANSACTION_STATE.SENT.id];
-    if (!supportedStates.includes(transactionStateId as any))
+    if (!SUPPORTED_SYSTEM_STATE_IDS.includes(transactionStateId))
       throw new UnsupportedOperationError(`Unsupported system transaction state: ${transactionStateId}`);
   }
 
-  private async createSenderJournalTransactions(
-    withdraw: Withdraw,
-    tx: Parameters<Parameters<UnitOfWork['execute']>[0]>[0],
-  ): Promise<JournalTransaction[]> {
-    const sourceContent = JSON.stringify(withdraw);
-    const journalTransactions: JournalTransaction[] = [];
-
-    for (const sender of withdraw.sender) {
-      journalTransactions.push(
-        await this.ledgerPipeline.createJournalTransaction(
-          {
-            uuidToken: withdraw.uuidToken,
-            idempotencyToken: sender.idempotencyToken,
-            transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
-            fromAccountId: sender.accountId ?? null,
-            sourceContent,
-          },
-          tx,
-        ),
-      );
-    }
-
-    return journalTransactions;
+  private createSenderJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {
+    return this.createJournalTransactions(
+      withdraw,
+      withdraw.sender,
+      (sender) => ({ transactionTypeId: TRANSACTION_TYPE.WITHDRAW, fromAccountId: sender.accountId ?? null }),
+      tx,
+    );
   }
 
-  private async createRecipientJournalTransactions(
+  private createRecipientJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {
+    return this.createJournalTransactions(
+      withdraw,
+      withdraw.recipient.filter(isInternalRecipient),
+      (recipient) => ({ transactionTypeId: TRANSACTION_TYPE.DEPOSIT, toAccountId: recipient.accountId ?? null }),
+      tx,
+    );
+  }
+
+  private async createJournalTransactions(
     withdraw: Withdraw,
-    tx: Parameters<Parameters<UnitOfWork['execute']>[0]>[0],
+    items: AccountItem[],
+    toSide: (item: AccountItem) => JournalTransactionSide,
+    tx: Transaction,
   ): Promise<JournalTransaction[]> {
     const sourceContent = JSON.stringify(withdraw);
     const journalTransactions: JournalTransaction[] = [];
 
-    for (const recipient of withdraw.recipient.filter(isInternalRecipient)) {
+    for (const item of items) {
       journalTransactions.push(
         await this.ledgerPipeline.createJournalTransaction(
           {
             uuidToken: withdraw.uuidToken,
-            idempotencyToken: recipient.idempotencyToken,
-            transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
-            toAccountId: recipient.accountId ?? null,
+            idempotencyToken: item.idempotencyToken,
+            ...toSide(item),
             sourceContent,
           },
           tx,

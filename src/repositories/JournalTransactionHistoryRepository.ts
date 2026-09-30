@@ -1,13 +1,13 @@
-import { Transaction } from 'sequelize';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { RecordJournalTransactionHistoryParams } from '../interfaces';
 import { JournalTransactionHistory } from '../models';
+import type { RecordJournalTransactionHistoryParams } from '../types';
 
 @singleton()
 @autoInjectable()
 export class JournalTransactionHistoryRepository {
-  async record(params: RecordJournalTransactionHistoryParams, transaction: Transaction): Promise<JournalTransactionHistory> {
+  async record(params: RecordJournalTransactionHistoryParams, tx: Transaction): Promise<JournalTransactionHistory> {
     const { journalTransaction } = params;
 
     return JournalTransactionHistory.create(
@@ -19,11 +19,11 @@ export class JournalTransactionHistoryRepository {
         transactionStateId: params.transactionStateId ?? null,
         createdBy: params.createdBy ?? null,
       },
-      { transaction },
+      { transaction: tx },
     );
   }
 
-  async findLatest(journalTransactionId: number, transaction: Transaction): Promise<JournalTransactionHistory | null> {
-    return JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction });
+  async findLatest(journalTransactionId: number, tx: Transaction): Promise<JournalTransactionHistory | null> {
+    return JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction: tx });
   }
 }

@@ -1,13 +1,13 @@
-import { Transaction } from 'sequelize';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { RecordBookHistoryParams } from '../interfaces';
 import { BookHistory } from '../models';
+import type { RecordBookHistoryParams } from '../types';
 
 @singleton()
 @autoInjectable()
 export class BookHistoryRepository {
-  async record(params: RecordBookHistoryParams, transaction: Transaction): Promise<BookHistory> {
+  async record(params: RecordBookHistoryParams, tx: Transaction): Promise<BookHistory> {
     return BookHistory.create(
       {
         historyTransactionTypeId: params.historyTransactionTypeId,
@@ -17,11 +17,11 @@ export class BookHistoryRepository {
         lastSequenceNo: params.lastSequenceNo,
         createdBy: params.createdBy ?? null,
       },
-      { transaction },
+      { transaction: tx },
     );
   }
 
-  async findLatest(bookId: number, transaction: Transaction): Promise<BookHistory | null> {
-    return BookHistory.findOne({ where: { bookId }, order: [['id', 'DESC']], transaction });
+  async findLatest(bookId: number, tx: Transaction): Promise<BookHistory | null> {
+    return BookHistory.findOne({ where: { bookId }, order: [['id', 'DESC']], transaction: tx });
   }
 }

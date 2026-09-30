@@ -1,12 +1,13 @@
 import 'reflect-metadata';
 import { container } from 'tsyringe';
 
-import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../../src/constants';
-import { BlockchainEventHandler } from '../../src/handler/BlockchainEventHandler';
-import { UnitOfWork } from '../../src/common/UnitOfWork';
-import { BlockchainMessagePayload } from '../interfaces';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
+
+import { UnitOfWork } from '../common/UnitOfWork';
 import { sequelize } from '../config/database';
+import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
+import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
+import type { BlockchainMessagePayload } from '../types';
 
 async function main() {
   const unitOfWork = container.resolve(UnitOfWork);

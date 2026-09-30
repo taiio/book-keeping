@@ -1,0 +1,31 @@
+import type { Book } from '../models';
+import type { AccountAssetIdentity } from './account';
+import type { CreatedByParams, GetOrCreateResult, HistoryRecordParams, UpdatedByParams } from './common';
+
+/** Selects a book "slot" within an account: which purpose it serves and which transaction state it holds. */
+export interface BookRef {
+  bookPurposeId: number;
+  transactionStateId: number | null;
+}
+
+export interface BookParams extends AccountAssetIdentity, BookRef, CreatedByParams {
+  name?: string;
+  address?: string;
+}
+
+export type GetOrCreateBookResult = GetOrCreateResult<{ book: Book }>;
+
+export interface UpdateBookParams extends UpdatedByParams {
+  book: Book;
+  amountDelta: string;
+  sequenceNo: number;
+  bookPostingId?: number | null;
+}
+
+export interface RecordBookHistoryParams extends HistoryRecordParams {
+  bookId: number;
+  bookPostingId?: number | null;
+
+  amount: string;
+  lastSequenceNo: number;
+}

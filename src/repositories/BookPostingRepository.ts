@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
-import { Transaction } from 'sequelize';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { CreateBookPostingParams } from '../interfaces';
 import { Book, BookPosting } from '../models';
-import { BookRepository } from './Book';
+import type { CreateBookPostingParams } from '../types';
+import { BookRepository } from './BookRepository';
 
 @singleton()
 @autoInjectable()
@@ -15,8 +15,8 @@ export class BookPostingRepository {
     this.bookRepository = bookRepository!;
   }
 
-  async createBookPosting(params: CreateBookPostingParams, transaction: Transaction): Promise<BookPosting> {
-    const lockedBook = await this.bookRepository.lockBookById(params.bookId, transaction);
+  async createBookPosting(params: CreateBookPostingParams, tx: Transaction): Promise<BookPosting> {
+    const lockedBook = await this.bookRepository.lockBookById(params.bookId, tx);
     const nextSequenceNo = Number(lockedBook.lastSequenceNo) + 1;
 
     const [posting, created] = await BookPosting.findOrCreate({
@@ -33,7 +33,7 @@ export class BookPostingRepository {
         businessPostDateTime: params.businessPostDateTime,
         createdBy: params.createdBy ?? null,
       },
-      transaction,
+      transaction: tx,
     });
 
     if (!created) {
@@ -48,24 +48,20 @@ export class BookPostingRepository {
         bookPostingId: posting.id,
         updatedBy: params.createdBy,
       },
-      transaction,
+      tx,
     );
 
     return posting;
   }
 
-  async countByJournalTransactionId(journalTransactionId: number, transaction: Transaction): Promise<number> {
-    return BookPosting.count({ where: { journalTransactionId }, transaction });
-  }
-
-  async findLatestTransactionStateId(journalTransactionId: number, transaction: Transaction): Promise<number | null> {
-    const latestPosting = await BookPosting.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction });
+  async findLatestTransactionStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
+    const latestPosting = await BookPosting.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction: tx });
 
     if (!latestPosting) {
       return null;
     }
 
-    const book = await Book.findByPk(latestPosting.bookId, { transaction });
+    const book = await Book.findByPk(latestPosting.bookId, { transaction: tx });
 
     return book?.transactionStateId ?? null;
   }

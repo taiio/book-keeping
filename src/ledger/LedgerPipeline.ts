@@ -1,20 +1,27 @@
-import { Transaction } from 'sequelize';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { InvalidTransitionError, NotFoundError } from '../common/errors';
-import { BOOK_PURPOSE, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
-import { custodyBookParams, externalBookParams } from '../helpers/book';
-import { bookPostingIdempotencyToken } from '../helpers/idempotency';
-import { negateQuantity } from '../helpers/quantity';
-import type { BookLegParams, GetOrCreateJournalTransactionParams } from '../interfaces';
-import type { LedgerLeg, TransitionRequest, TransitionResult } from '../interfaces/LedgerPipeline';
-import { Book, JournalTransaction } from '../models';
-import { BookRepository } from '../repositories/Book';
-import { BookPostingRepository } from '../repositories/BookPosting';
-import { JournalTransactionRepository } from '../repositories/JournalTransaction';
-import { JournalTransactionHistoryRepository } from '../repositories/JournalTransactionHistory';
+import { InvalidTransitionError } from '../common/errors';
+import { BOOK_PURPOSE, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE } from '../constants';
+import { bookPostingIdempotencyToken, custodyBookParams, externalBookParams, negateQuantity } from '../helpers';
+import type { Book, JournalTransaction } from '../models';
+import { BookRepository } from '../repositories/BookRepository';
+import { BookPostingRepository } from '../repositories/BookPostingRepository';
+import { JournalTransactionRepository } from '../repositories/JournalTransactionRepository';
+import { JournalTransactionHistoryRepository } from '../repositories/JournalTransactionHistoryRepository';
+import type {
+  BookParams,
+  BookRef,
+  GetOrCreateJournalTransactionParams,
+  LedgerLeg,
+  LedgerMovement,
+  LegBooks,
+  LegItem,
+  TransitionRequest,
+  TransitionResult,
+} from '../types';
 import { LedgerStateMachine } from './LedgerStateMachine';
-import { LEDGER_MOVEMENTS, type BookRef } from './ledger-movements';
+import { LEDGER_MOVEMENTS } from './ledgerMovements';
 
 @singleton()
 @autoInjectable()
@@ -84,16 +91,10 @@ export class LedgerPipeline {
 
       if (!movement) throw new InvalidTransitionError(journalTransaction.id, currentStateId, request.targetStateId);
 
-      const books = [];
-
-      for (const leg of request.legs) {
-        const from = await this.getOrCreateBook(movement.from, leg.item, tx);
-        const to = await this.getOrCreateBook(movement.to, leg.item, tx);
-        books.push({ leg, from, to });
-      }
+      const legBooks = await this.resolveLegBooks(movement, request.legs, tx);
 
       await this.bookRepository.lockBooksInOrder(
-        books.flatMap((book) => [book.from.id, book.to.id]),
+        legBooks.flatMap((book) => [book.from.id, book.to.id]),
         tx,
       );
 
@@ -112,7 +113,7 @@ export class LedgerPipeline {
 
       let index = 1;
 
-      for (const { leg, from, to } of books) {
+      for (const { leg, from, to } of legBooks) {
         await this.postDoubleEntry(journalTransaction, request.targetStateId, leg, from, to, index, tx);
         index += 2;
       }
@@ -121,6 +122,25 @@ export class LedgerPipeline {
     }
 
     return results;
+  }
+
+  private async resolveLegBooks(movement: LedgerMovement, legs: LedgerLeg[], tx: Transaction): Promise<LegBooks[]> {
+    const legBooks: LegBooks[] = [];
+
+    for (const leg of legs) {
+      const from = await this.getOrCreateBook(movement.from, leg.item, tx);
+      const to = await this.getOrCreateBook(movement.to, leg.item, tx);
+      legBooks.push({ leg, from, to });
+    }
+
+    return legBooks;
+  }
+
+  private getOrCreateBook(ref: BookRef, item: LegItem, tx: Transaction): Promise<Book> {
+    const params: BookParams =
+      ref.bookPurposeId === BOOK_PURPOSE.BLOCKCHAIN_EXTERNAL_ACCOUNT.id ? externalBookParams(item) : custodyBookParams(item, ref.transactionStateId!);
+
+    return this.bookRepository.getOrCreateBook(params, tx).then(({ book }) => book);
   }
 
   private async postDoubleEntry(
@@ -146,12 +166,5 @@ export class LedgerPipeline {
       tx,
     );
     await this.bookPostingRepository.createBookPosting({ ...common, bookId: to.id, amount: leg.amount, idempotencyToken: token(firstIndex + 1) }, tx);
-  }
-
-  private getOrCreateBook(ref: BookRef, item: LedgerLeg['item'], tx: Transaction): Promise<Book> {
-    const params: BookLegParams =
-      ref.bookPurposeId === BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id ? externalBookParams(item) : custodyBookParams(item, ref.transactionStateId!);
-
-    return this.bookRepository.getOrCreateBook(params, tx).then(({ book }) => book);
   }
 }

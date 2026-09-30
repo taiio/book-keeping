@@ -2,7 +2,7 @@ import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { sequelize } from '../config/database';
-import { IUnitOfWork } from '../interfaces';
+import type { IUnitOfWork } from '../ports';
 
 @singleton()
 @autoInjectable()

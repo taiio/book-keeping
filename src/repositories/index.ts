@@ -1,5 +1,5 @@
-export { BookRepository } from './Book';
-export { BookHistoryRepository } from './BookHistory';
-export { BookPostingRepository } from './BookPosting';
-export { JournalTransactionRepository } from './JournalTransaction';
-export { JournalTransactionHistoryRepository } from './JournalTransactionHistory';
+export { BookRepository } from './BookRepository';
+export { BookHistoryRepository } from './BookHistoryRepository';
+export { BookPostingRepository } from './BookPostingRepository';
+export { JournalTransactionRepository } from './JournalTransactionRepository';
+export { JournalTransactionHistoryRepository } from './JournalTransactionHistoryRepository';

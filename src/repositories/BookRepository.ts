@@ -1,11 +1,23 @@
-import { Transaction } from 'sequelize';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { InsufficientBalanceError, NotFoundError } from '../common/errors';
 import { BOOK_PURPOSE, HISTORY_EVENT_TYPE, TRANSACTION_STATE } from '../constants';
-import { BookLegParams, GetOrCreateBookResult, UpdateBookParams } from '../interfaces';
 import { Book } from '../models';
-import { BookHistoryRepository } from './BookHistory';
+import type { BookParams, GetOrCreateBookResult, UpdateBookParams } from '../types';
+import { BookHistoryRepository } from './BookHistoryRepository';
+
+/** The columns that uniquely identify a book (mirrors the `idx_unique_book` index). */
+function bookKey(params: BookParams) {
+  return {
+    clientId: params.clientId,
+    accountId: params.accountId,
+    assetTypeId: params.assetTypeId,
+    walletTypeId: params.walletTypeId,
+    bookPurposeId: params.bookPurposeId,
+    transactionStateId: params.transactionStateId,
+  };
+}
 
 @singleton()
 @autoInjectable()
@@ -16,45 +28,9 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
-  async findByDepositAddress(address: string, assetTicker: string, transaction: Transaction): Promise<Book | null> {
-    return Book.findOne({
-      where: {
-        address,
-        assetTicker,
-        bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
-        transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
-      },
-      transaction,
-    });
-  }
-
-  /**
-   * Find-only lookup (never creates). Used for books that must already exist, e.g. deposit-side custody books.
-   */
-  async findBook(params: BookLegParams, transaction: Transaction): Promise<Book | null> {
-    return Book.findOne({
-      where: {
-        clientId: params.clientId,
-        accountId: params.accountId,
-        assetTypeId: params.assetTypeId,
-        walletTypeId: params.walletTypeId,
-        bookPurposeId: params.bookPurposeId,
-        transactionStateId: params.transactionStateId,
-      },
-      transaction,
-    });
-  }
-
-  async getOrCreateBook(params: BookLegParams, transaction: Transaction): Promise<GetOrCreateBookResult> {
+  async getOrCreateBook(params: BookParams, tx: Transaction): Promise<GetOrCreateBookResult> {
     const [book, created] = await Book.findOrCreate({
-      where: {
-        clientId: params.clientId,
-        accountId: params.accountId,
-        assetTypeId: params.assetTypeId,
-        walletTypeId: params.walletTypeId,
-        bookPurposeId: params.bookPurposeId,
-        transactionStateId: params.transactionStateId,
-      },
+      where: bookKey(params),
       defaults: {
         name: params.name,
         assetId: params.assetId,
@@ -64,7 +40,7 @@ export class BookRepository {
         lastSequenceNo: 0,
         createdBy: params.createdBy ?? null,
       },
-      transaction,
+      transaction: tx,
     });
 
     if (created) {
@@ -77,7 +53,7 @@ export class BookRepository {
           lastSequenceNo: book.lastSequenceNo,
           createdBy: params.createdBy,
         },
-        transaction,
+        tx,
       );
     }
 
@@ -105,7 +81,7 @@ export class BookRepository {
     return result;
   }
 
-  async updateBook(params: UpdateBookParams, transaction: Transaction): Promise<Book> {
+  async updateBook(params: UpdateBookParams, tx: Transaction): Promise<Book> {
     const { book, amountDelta, sequenceNo, bookPostingId, updatedBy } = params;
 
     const nextAmount = BigInt(book.amount ?? '0') + BigInt(amountDelta);
@@ -123,7 +99,7 @@ export class BookRepository {
     book.updatedDate = new Date();
     book.updatedBy = updatedBy ?? null;
 
-    await book.save({ transaction });
+    await book.save({ transaction: tx });
 
     await this.bookHistoryRepository.record(
       {
@@ -134,14 +110,9 @@ export class BookRepository {
         lastSequenceNo: sequenceNo,
         createdBy: updatedBy,
       },
-      transaction,
+      tx,
     );
 
     return book;
-  }
-
-  //only testing
-  async initBalance(params: any, tx: Transaction): Promise<any> {
-    return Book.create(params);
   }
 }

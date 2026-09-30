@@ -1,21 +1,14 @@
 import { randomUUID } from 'crypto';
+import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
-import { LedgerPipeline } from './LedgerPipeline';
-import { UnitOfWork } from '../common/UnitOfWork';
-import { NotFoundError, UnsupportedOperationError } from '../common/errors';
-import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_POSTING_PURPOSE, TRANSACTION_TYPE } from '../constants';
-import type {
-  BlockchainMessagePayload,
-  BlockchainRecipient,
-  BlockchainSender,
-  FeeItem,
-  LedgerLeg,
-  TransitionRequest,
-  TransitionResult,
-} from '../interfaces';
-import type { JournalTransaction } from '../models';
 
-type Tx = Parameters<Parameters<UnitOfWork['execute']>[0]>[0];
+import { NotFoundError, UnsupportedOperationError } from '../common/errors';
+import { UnitOfWork } from '../common/UnitOfWork';
+import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_POSTING_PURPOSE, TRANSACTION_TYPE } from '../constants';
+import { toLegItem } from '../helpers';
+import { LedgerPipeline } from '../ledger/LedgerPipeline';
+import type { JournalTransaction } from '../models';
+import type { BlockchainMessagePayload, LedgerLeg, TransitionRequest, TransitionResult } from '../types';
 
 @singleton()
 @autoInjectable()
@@ -71,7 +64,7 @@ export class BlockchainEventHandler {
     };
   }
 
-  private async createDepositJournalTransactions(payload: BlockchainMessagePayload, tx: Tx): Promise<JournalTransaction[]> {
+  private async createDepositJournalTransactions(payload: BlockchainMessagePayload, tx: Transaction): Promise<JournalTransaction[]> {
     const internalRecipients = payload.recipients.filter((recipient) => recipient.account);
 
     if (internalRecipients.length === 0) {
@@ -114,18 +107,24 @@ export class BlockchainEventHandler {
       throw new NotFoundError('Blockchain sender account for JournalTransaction', journalTransaction.id);
     }
 
+    if (!sender.assetTicker) {
+      throw new NotFoundError('Blockchain sender assetTicker for JournalTransaction', journalTransaction.id);
+    }
+
     const legs: LedgerLeg[] = [
       {
-        item: sender.account,
+        item: toLegItem(sender.account, sender.assetTicker),
         amount: sender.quantity || '0',
         purpose: BOOK_POSTING_PURPOSE.AMOUNT,
       },
     ];
 
-    if (payload.networkFee.account && payload.networkFee.account.accountId === accountId) {
+    const { networkFee } = payload;
+
+    if (networkFee.account && networkFee.account.accountId === accountId) {
       legs.push({
-        item: payload.networkFee.account,
-        amount: payload.networkFee.quantity,
+        item: toLegItem(networkFee.account, networkFee.assetTicker),
+        amount: networkFee.quantity,
         purpose: BOOK_POSTING_PURPOSE.FEE,
       });
     }
@@ -150,10 +149,7 @@ export class BlockchainEventHandler {
 
     return [
       {
-        item: {
-          ...recipient.account,
-          assetTicker: recipient.assetTicker,
-        },
+        item: toLegItem(recipient.account, recipient.assetTicker),
         amount: recipient.quantity,
         purpose: BOOK_POSTING_PURPOSE.AMOUNT,
       },
@@ -164,7 +160,7 @@ export class BlockchainEventHandler {
     payload: BlockchainMessagePayload,
     internalSenderExists: boolean,
     existingJournalTransactions: JournalTransaction[],
-    tx: Tx,
+    tx: Transaction,
   ): Promise<JournalTransaction | null> {
     if (!internalSenderExists) {
       return null;

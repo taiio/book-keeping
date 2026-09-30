@@ -1,25 +1,25 @@
-import type { BlockchainMessagePayload, Transaction } from '../interfaces';
+import type { BlockchainMessagePayload, SystemTransaction } from '../types';
 import type { JournalTransaction } from '../models';
 
-export function parseSourceContent(journalTransaction: JournalTransaction): Transaction | null {
+export function parseSourceContent(journalTransaction: JournalTransaction): SystemTransaction | null {
   if (!journalTransaction.sourceContent) {
     return null;
   }
 
   try {
-    return JSON.parse(journalTransaction.sourceContent) as Transaction;
+    return JSON.parse(journalTransaction.sourceContent) as SystemTransaction;
   } catch {
     return null;
   }
 }
 
-function extractDeclaredAddresses(transaction: Transaction): string[] {
+function extractDeclaredAddresses(transaction: SystemTransaction): string[] {
   const senders = Array.isArray(transaction.sender) ? transaction.sender : [transaction.sender];
 
   return senders.map((item) => item.address).filter((address): address is string => !!address);
 }
 
-export function matchesSender(original: Transaction | null, payload: BlockchainMessagePayload): boolean {
+export function matchesSender(original: SystemTransaction | null, payload: BlockchainMessagePayload): boolean {
   if (!original) {
     return true;
   }
