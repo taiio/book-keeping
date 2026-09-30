@@ -45,7 +45,7 @@ export interface TransactionBase {
 
 export interface Withdraw extends TransactionBase {
   type: typeof TRANSACTION_TYPE.WITHDRAW;
-
+  transactionStateId: number;
   sender: AccountItem[];
   recipient: AccountItem[];
   fee: FeeItem;
@@ -53,6 +53,7 @@ export interface Withdraw extends TransactionBase {
 
 export interface Stake extends TransactionBase {
   type: typeof TRANSACTION_TYPE.STAKE;
+  transactionStateId: number;
   sender: AccountItem;
   pool: {
     poolId: string;
@@ -63,6 +64,7 @@ export interface Stake extends TransactionBase {
 
 export interface Unstake extends TransactionBase {
   type: typeof TRANSACTION_TYPE.UNSTAKE;
+  transactionStateId: number;
   sender: AccountItem;
   pool: {
     poolId: string;
@@ -74,6 +76,7 @@ export interface Unstake extends TransactionBase {
 
 export interface Restake extends TransactionBase {
   type: typeof TRANSACTION_TYPE.RESTAKE;
+  transactionStateId: number;
   sender: AccountItem;
   fromPool: {
     poolId: string;

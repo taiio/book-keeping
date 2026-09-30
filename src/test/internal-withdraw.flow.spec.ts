@@ -31,6 +31,7 @@ async function main() {
   const idempotencyFee = randomUUID();
   const withdraw: Withdraw = {
     type: TRANSACTION_TYPE.WITHDRAW,
+    transactionStateId: 1,
     uuidToken,
     transactionHash,
     sender: [
@@ -82,8 +83,9 @@ async function main() {
     },
   };
 
-  const result = await systemTransactionHandler.handle(withdraw);
-  console.log('System transaction:', result);
+await systemTransactionHandler.handle({...withdraw, transactionStateId: 1});
+await systemTransactionHandler.handle({...withdraw, transactionStateId: 2})
+await systemTransactionHandler.handle({...withdraw, transactionStateId: 3})
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,
