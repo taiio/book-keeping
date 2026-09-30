@@ -122,19 +122,19 @@ export class BookPosting extends Model {
   declare sequenceNo: number;
 
   @Column({
-    field: 'business_post_date_time',
-    type: DataType.DATE,
-    allowNull: true,
-  })
-  declare businessPostDateTime: Date;
-
-  @Column({
     field: 'idempotency_token',
     type: DataType.STRING(64),
     allowNull: false,
     unique: 'uk_book_posting_idempotency_token',
   })
   declare idempotencyToken: string;
+
+  @Column({
+    field: 'business_post_date_time',
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  declare businessPostDateTime: Date;
 
   @Column({
     field: 'created_date',

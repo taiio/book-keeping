@@ -83,21 +83,6 @@ export class JournalTransaction extends Model {
   declare transactionHash: string | null;
 
   @Column({
-    field: 'source_content',
-    type: DataType.TEXT,
-    allowNull: true,
-  })
-  declare sourceContent: string | null;
-
-  @Column({
-    field: 'idempotency_token',
-    type: DataType.STRING(255),
-    allowNull: true,
-    unique: true,
-  })
-  declare idempotencyToken: string | null;
-
-  @Column({
     field: 'journal_transaction_state',
     type: DataType.INTEGER,
     allowNull: false,
@@ -109,6 +94,20 @@ export class JournalTransaction extends Model {
   })
   declare journalTransactionState: JournalTransactionStateValue;
 
+  @Column({
+    field: 'idempotency_token',
+    type: DataType.STRING(255),
+    allowNull: true,
+    unique: true,
+  })
+  declare idempotencyToken: string | null;
+
+  @Column({
+    field: 'source_content',
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  declare sourceContent: string | null;
   @Column({
     field: 'business_post_date_time',
     type: DataType.DATE,

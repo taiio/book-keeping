@@ -96,13 +96,6 @@ export class Book extends Model {
   declare assetTicker: string;
 
   @Column({
-    field: 'wallet_type_id',
-    type: DataType.INTEGER,
-    allowNull: false,
-  })
-  declare walletTypeId: number;
-
-  @Column({
     type: DataType.DECIMAL(65, 0),
     allowNull: false,
     defaultValue: '0',
@@ -116,6 +109,13 @@ export class Book extends Model {
     defaultValue: 0,
   })
   declare lastSequenceNo: number;
+
+  @Column({
+    field: 'wallet_type_id',
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  declare walletTypeId: number;
 
   @Column({
     type: DataType.STRING(255),

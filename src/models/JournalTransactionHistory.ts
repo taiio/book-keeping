@@ -40,6 +40,18 @@ export class JournalTransactionHistory extends Model {
   declare journalTransaction: JournalTransaction;
 
   @Column({
+    field: 'journal_transaction_state',
+    type: DataType.INTEGER,
+    allowNull: false,
+    validate: {
+      isIn: [
+        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
+      ],
+    },
+  })
+  declare journalTransactionState: JournalTransactionStateValue;
+
+  @Column({
     field: 'request_id',
     type: DataType.INTEGER,
     allowNull: true,
@@ -52,18 +64,6 @@ export class JournalTransactionHistory extends Model {
     allowNull: true,
   })
   declare transactionHash: string | null;
-
-  @Column({
-    field: 'journal_transaction_state',
-    type: DataType.INTEGER,
-    allowNull: false,
-    validate: {
-      isIn: [
-        [JOURNAL_TRANSACTION_STATE.ACTIVE, JOURNAL_TRANSACTION_STATE.COMPLETED, JOURNAL_TRANSACTION_STATE.REJECTED, JOURNAL_TRANSACTION_STATE.FAILED],
-      ],
-    },
-  })
-  declare journalTransactionState: JournalTransactionStateValue;
 
   @ForeignKey(() => TransactionState)
   @Column({

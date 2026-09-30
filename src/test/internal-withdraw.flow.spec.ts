@@ -7,109 +7,35 @@ import { SystemTransactionHandler, BLOCKCHAIN_SUBMITTER } from '../../src/handle
 import { UnitOfWork } from '../../src/common/UnitOfWork';
 import type { IBlockchainSubmitter, Withdraw } from '../../src/interfaces';
 import type { BlockchainMessagePayload } from '../interfaces';
+import { randomBytes, randomInt, randomUUID } from 'crypto';
+import { sequelize } from '../config/database';
 
+const transactionHash = randomBytes(32).toString('hex');
 const mockSubmitter: IBlockchainSubmitter = {
   async submit() {
-    return { transactionHash: '0xinternalWITHDRAW001' };
+    return { transactionHash };
   },
 };
 
 async function main() {
   container.registerInstance(BLOCKCHAIN_SUBMITTER, mockSubmitter);
-  const unitOfWork = container.resolve(UnitOfWork);
-  const bookRepository = container.resolve(BookRepository);
   const systemTransactionHandler = container.resolve(SystemTransactionHandler);
   const blockchainEventHandler = container.resolve(BlockchainEventHandler);
-
-  await unitOfWork.execute(async (tx) => {
-    await bookRepository.initBalance(
-      {
-        name: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.code,
-        clientId: 1,
-        accountId: 1,
-        assetTypeId: 1,
-        walletTypeId: 1,
-        assetId: 1,
-        bookPurposeId: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id,
-        transactionStateId: null,
-        assetTicker: 'USDT',
-        amount: '-1000',
-        lastSequenceNo: 0,
-      },
-      tx,
-    );
-    await bookRepository.initBalance(
-      {
-        name: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.code,
-        clientId: 1,
-        accountId: 2,
-        assetTypeId: 1,
-        walletTypeId: 1,
-        assetId: 1,
-        bookPurposeId: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id,
-        transactionStateId: null,
-        assetTicker: 'USDT',
-        amount: '-1000',
-        lastSequenceNo: 0,
-      },
-      tx,
-    );
-    await bookRepository.initBalance(
-      {
-        name: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.code,
-        clientId: 1,
-        accountId: 1,
-        assetTypeId: 2,
-        walletTypeId: 1,
-        assetId: 2,
-        bookPurposeId: BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id,
-        transactionStateId: null,
-        assetTicker: 'ETH',
-        amount: '-1000',
-        lastSequenceNo: 0,
-      },
-      tx,
-    );
-
-    for (const account of [
-      { accountId: 1, assetTypeId: 1, assetId: 1, assetTicker: 'USDT' },
-      { accountId: 2, assetTypeId: 1, assetId: 1, assetTicker: 'USDT' },
-      { accountId: 1, assetTypeId: 2, assetId: 2, assetTicker: 'ETH' },
-    ]) {
-      for (const state of [
-        TRANSACTION_STATE.AUTHORIZING,
-        TRANSACTION_STATE.AUTHORIZED,
-        TRANSACTION_STATE.SENT,
-        TRANSACTION_STATE.CONFIRMING,
-        TRANSACTION_STATE.CONFIRMED,
-      ]) {
-        await bookRepository.initBalance(
-          {
-            name: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.code,
-            clientId: 1,
-            accountId: account.accountId,
-            assetTypeId: account.assetTypeId,
-            walletTypeId: 1,
-            assetId: account.assetId,
-            bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
-            transactionStateId: state.id,
-            assetTicker: account.assetTicker,
-            amount: state === TRANSACTION_STATE.CONFIRMED ?'1000': '0',
-            lastSequenceNo: 0,
-          },
-          tx,
-        );
-      }
-    }
-  });
-
+  const uuidToken = randomUUID();
+  const senderAddress = '66f83428e0f1dd12d40933d9ed081bab3';
+  const recipentAddress1 = '66f83428e0f1dd12d40933d9ed081bab4';
+  const recipentAddress2 = '66f83428e0f1dd12d40933d9ed081bab5';
+  const idempotencySender = randomUUID();
+  const idempotencyRecipent1 = randomUUID();
+  const idempotencyRecipent2 = randomUUID();
+  const idempotencyFee = randomUUID();
   const withdraw: Withdraw = {
     type: TRANSACTION_TYPE.WITHDRAW,
-    uuidToken: 'withdraw-internal-001',
-    transactionHash: '0xinternalWITHDRAW001',
+    uuidToken,
+    transactionHash,
     sender: [
       {
-        idempotencyToken: 'sender-internal-001',
+        idempotencyToken: idempotencySender,
         clientId: 1,
         accountId: 1,
         assetTypeId: 1,
@@ -117,24 +43,35 @@ async function main() {
         assetId: 1,
         assetTicker: 'USDT',
         quantity: '100',
-        address: '0xWalletAccount1',
+        address: senderAddress,
       },
     ],
     recipient: [
       {
-        idempotencyToken: 'recipient-internal-001',
+        idempotencyToken: idempotencyRecipent1,
         clientId: 1,
         accountId: 2,
         assetTypeId: 1,
         walletTypeId: 1,
         assetId: 1,
         assetTicker: 'USDT',
-        quantity: '100',
-        address: '0xWalletAccount2',
+        quantity: '50',
+        address: recipentAddress1,
+      },
+      {
+        idempotencyToken: idempotencyRecipent2,
+        clientId: 1,
+        accountId: 3,
+        assetTypeId: 1,
+        walletTypeId: 1,
+        assetId: 1,
+        assetTicker: 'USDT',
+        quantity: '50',
+        address: recipentAddress2,
       },
     ],
     fee: {
-      idempotencyToken: 'fee-internal-001',
+      idempotencyToken: idempotencyFee,
       clientId: 1,
       accountId: 1,
       assetTypeId: 2,
@@ -150,13 +87,13 @@ async function main() {
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,
-    transactionHash: '0xinternalWITHDRAW001',
-    blockNumber: 200,
+    transactionHash: transactionHash,
+    blockNumber: randomInt(1000000),
     status: TRANSACTION_STATE.CONFIRMING.id,
     senders: [
       {
-        idempotencyToken: 'sender-internal-001',
-        address: '0xWalletAccount1',
+        idempotencyToken: idempotencySender,
+        address: senderAddress,
         quantity: '100',
         account: {
           assetTicker: 'USDT',
@@ -170,10 +107,10 @@ async function main() {
     ],
     recipients: [
       {
-        idempotencyToken: 'recipient-internal-001',
-        address: '0xWalletAccount2',
+        idempotencyToken: idempotencyRecipent1,
+        address: recipentAddress1,
         assetTicker: 'USDT',
-        quantity: '100',
+        quantity: '50',
         account: {
           clientId: 1,
           accountId: 2,
@@ -182,14 +119,27 @@ async function main() {
           assetId: 1,
         },
       },
+      {
+        idempotencyToken: idempotencyRecipent2,
+        address: recipentAddress2,
+        assetTicker: 'USDT',
+        quantity: '50',
+        account: {
+          clientId: 1,
+          accountId: 3,
+          assetTypeId: 1,
+          walletTypeId: 1,
+          assetId: 1,
+        },
+      },
     ],
     networkFee: {
-      idempotencyToken: 'fee-internal-001',
-      payerAddress: '0xWalletAccount1',
+      idempotencyToken: idempotencyFee,
+      payerAddress: senderAddress,
       assetTicker: 'ETH',
       quantity: '1',
       account: {
-        idempotencyToken: 'fee-internal-001',
+        idempotencyToken: idempotencyFee,
         clientId: 1,
         accountId: 1,
         assetTypeId: 2,
@@ -205,6 +155,7 @@ async function main() {
   await blockchainEventHandler.handle({ ...payload, status: TRANSACTION_STATE.CONFIRMED.id });
 
   console.log('Internal withdraw flow completed');
+  await sequelize.close();
 }
 
 main().catch((error) => {

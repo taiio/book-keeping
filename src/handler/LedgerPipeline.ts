@@ -2,7 +2,7 @@ import { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { InvalidTransitionError, NotFoundError } from '../common/errors';
-import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { BOOK_PURPOSE, HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import { custodyBookParams, externalBookParams } from '../helpers/book';
 import { bookPostingIdempotencyToken } from '../helpers/idempotency';
 import { negateQuantity } from '../helpers/quantity';
@@ -87,8 +87,8 @@ export class LedgerPipeline {
       const books = [];
 
       for (const leg of request.legs) {
-        const from = await this.findBook(movement.from, leg.item, journalTransaction.transactionTypeId, tx);
-        const to = await this.findBook(movement.to, leg.item, journalTransaction.transactionTypeId, tx);
+        const from = await this.getOrCreateBook(movement.from, leg.item, tx);
+        const to = await this.getOrCreateBook(movement.to, leg.item, tx);
         books.push({ leg, from, to });
       }
 
@@ -148,16 +148,10 @@ export class LedgerPipeline {
     await this.bookPostingRepository.createBookPosting({ ...common, bookId: to.id, amount: leg.amount, idempotencyToken: token(firstIndex + 1) }, tx);
   }
 
-  private async findBook(ref: BookRef, item: LedgerLeg['item'], transactionTypeId: number, tx: Transaction): Promise<Book> {
-    const params: BookLegParams = ref.bookPurposeId === 2 ? externalBookParams(item) : custodyBookParams(item, ref.transactionStateId!);
-    const mustExist = transactionTypeId === TRANSACTION_TYPE.DEPOSIT || ref.transactionStateId === TRANSACTION_STATE.CONFIRMED.id;
+  private getOrCreateBook(ref: BookRef, item: LedgerLeg['item'], tx: Transaction): Promise<Book> {
+    const params: BookLegParams =
+      ref.bookPurposeId === BOOK_PURPOSE.BLOCKCHIAN_EXTERNAL_ACCOUNT.id ? externalBookParams(item) : custodyBookParams(item, ref.transactionStateId!);
 
-    if (mustExist) {
-      const book = await this.bookRepository.findBook(params, tx);
-      if (!book) throw new NotFoundError('Book', JSON.stringify(params));
-      return book;
-    }
-
-    return (await this.bookRepository.getOrCreateBook(params, tx)).book;
+    return this.bookRepository.getOrCreateBook(params, tx).then(({ book }) => book);
   }
 }

@@ -40,7 +40,7 @@ export type JournalTransactionStateValue = (typeof JOURNAL_TRANSACTION_STATE)[ke
 
 export interface TransactionBase {
   uuidToken: string;
-  transactionHash?: string,
+  transactionHash?: string;
 }
 
 export interface Withdraw extends TransactionBase {
