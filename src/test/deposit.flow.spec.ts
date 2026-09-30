@@ -19,7 +19,7 @@ async function main() {
       transactionHash: randomBytes(32).toString('hex'),
       blockNumber: randomInt(10000),
       status: TRANSACTION_STATE.CONFIRMING.id,
-      senders: [{ address: randomBytes(12).toString('hex'), assetTicker: 'USDT', quantity: '1000'}],
+      senders: [{ address: randomBytes(12).toString('hex'), assetTicker: 'USDT', quantity: '1000' }],
       recipients: [
         {
           idempotencyToken: randomUUID(),

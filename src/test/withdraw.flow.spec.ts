@@ -24,7 +24,7 @@ async function main() {
   const uuidToken = randomUUID();
   const senderAddress = '66f83428e0f1dd12d40933d9ed081bab3';
   const recipentAddress1 = '66f83428e0f1dd12d40933d9ed081bab4';
-  const recipentAddress2 = '66f83428e0f1dd12d40933d9ed081bab5';
+  const feeAddress = '66f83428e0f1dd12d40933d9ed081bab6';
   const idempotencySender = randomUUID();
   const idempotencyRecipent1 = randomUUID();
   const idempotencyRecipent2 = randomUUID();
@@ -54,17 +54,11 @@ async function main() {
         idempotencyToken: idempotencyRecipent1,
         address: recipentAddress1,
         assetTicker: 'USDT',
-        quantity: '50',
-      },
-      {
-        idempotencyToken: idempotencyRecipent2,
-        address: recipentAddress2,
-        assetTicker: 'USDT',
-        quantity: '50',
+        quantity: '100',
       },
     ],
     fee: {
-      idempotencyToken: idempotencyFee,
+      idempotencyToken: idempotencySender,
       assetTicker: 'ETH',
       quantity: '1',
       account: {
@@ -82,7 +76,7 @@ async function main() {
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 3 });
 
   const payload: BlockchainMessagePayload = {
-    uuidToken: withdraw.uuidToken,
+    uuidToken: uuidToken,
     transactionHash: transactionHash,
     blockNumber: randomInt(1000000),
     status: TRANSACTION_STATE.CONFIRMING.id,
@@ -106,36 +100,15 @@ async function main() {
         idempotencyToken: idempotencyRecipent1,
         address: recipentAddress1,
         assetTicker: 'USDT',
-        quantity: '50',
-        account: {
-          clientId: 1,
-          accountId: 2,
-          assetTypeId: 1,
-          walletTypeId: 1,
-          assetId: 1,
-        },
-      },
-      {
-        idempotencyToken: idempotencyRecipent2,
-        address: recipentAddress2,
-        assetTicker: 'USDT',
-        quantity: '50',
-        account: {
-          clientId: 1,
-          accountId: 3,
-          assetTypeId: 1,
-          walletTypeId: 1,
-          assetId: 1,
-        },
+        quantity: '100',
       },
     ],
     networkFee: {
-      idempotencyToken: idempotencyFee,
-      payerAddress: senderAddress,
+      idempotencyToken: idempotencySender,
       assetTicker: 'ETH',
+      payerAddress: senderAddress,
       quantity: '1',
       account: {
-        idempotencyToken: idempotencyFee,
         clientId: 1,
         accountId: 1,
         assetTypeId: 2,
@@ -148,7 +121,7 @@ async function main() {
   await blockchainEventHandler.handle(payload);
   await blockchainEventHandler.handle({ ...payload, status: TRANSACTION_STATE.CONFIRMED.id });
 
-  console.log('Internal withdraw flow completed');
+  console.log('External withdraw flow completed');
   await sequelize.close();
 }
 
