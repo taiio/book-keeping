@@ -54,6 +54,10 @@ export class BookPostingRepository {
     return posting;
   }
 
+  async countByJournalTransactionId(journalTransactionId: number, tx: Transaction): Promise<number> {
+    return BookPosting.count({ where: { journalTransactionId }, transaction: tx });
+  }
+
   async findLatestTransactionStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
     const latestPosting = await BookPosting.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction: tx });
 

@@ -1,7 +1,7 @@
-import type { AccountIdentity, AccountItem, LegItem } from '../types';
+import type { AccountIdentity, AccountItem, InternalAccountItem, LegItem } from '../types';
 
-export function isInternalRecipient(item: AccountItem): boolean {
-  return item.clientId !== undefined && item.accountId !== undefined && item.assetTypeId !== undefined && item.walletTypeId !== undefined;
+export function isInternalItem(item: AccountItem): item is InternalAccountItem {
+  return item.account !== undefined;
 }
 
 export function toLegItem(account: AccountIdentity, assetTicker: string): LegItem {

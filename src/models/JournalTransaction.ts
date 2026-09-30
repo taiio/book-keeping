@@ -21,7 +21,6 @@ import type { JournalTransactionStateId } from '../constants';
   ],
 })
 export class JournalTransaction extends Model {
-
   @PrimaryKey
   @AutoIncrement
   @Column({

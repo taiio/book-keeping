@@ -7,18 +7,6 @@ import { Book } from '../models';
 import type { BookParams, GetOrCreateBookResult, UpdateBookParams } from '../types';
 import { BookHistoryRepository } from './BookHistoryRepository';
 
-/** The columns that uniquely identify a book (mirrors the `idx_unique_book` index). */
-function bookKey(params: BookParams) {
-  return {
-    clientId: params.clientId,
-    accountId: params.accountId,
-    assetTypeId: params.assetTypeId,
-    walletTypeId: params.walletTypeId,
-    bookPurposeId: params.bookPurposeId,
-    transactionStateId: params.transactionStateId,
-  };
-}
-
 @singleton()
 @autoInjectable()
 export class BookRepository {
@@ -28,9 +16,25 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
+  async findByDepositAddress(address: string, assetTicker: string, tx: Transaction): Promise<Book | null> {
+    return Book.findOne({
+      where: {
+        address,
+        assetTicker,
+        bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
+        transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
+      },
+      transaction: tx,
+    });
+  }
+
+  async findBook(params: BookParams, tx: Transaction): Promise<Book | null> {
+    return Book.findOne({ where: this.bookKey(params), transaction: tx });
+  }
+
   async getOrCreateBook(params: BookParams, tx: Transaction): Promise<GetOrCreateBookResult> {
     const [book, created] = await Book.findOrCreate({
-      where: bookKey(params),
+      where: this.bookKey(params),
       defaults: {
         name: params.name,
         assetId: params.assetId,
@@ -114,5 +118,16 @@ export class BookRepository {
     );
 
     return book;
+  }
+
+  bookKey(params: BookParams) {
+    return {
+      clientId: params.clientId,
+      accountId: params.accountId,
+      assetTypeId: params.assetTypeId,
+      walletTypeId: params.walletTypeId,
+      bookPurposeId: params.bookPurposeId,
+      transactionStateId: params.transactionStateId,
+    };
   }
 }

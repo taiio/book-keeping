@@ -5,12 +5,12 @@ import type { BookParams, LegItem } from '../types';
 function baseBookParams(item: LegItem, purpose: BookPurposeDefinition, transactionStateId: number | null, createdBy?: number): BookParams {
   return {
     name: purpose.code,
-    clientId: item.clientId ?? 0,
-    accountId: item.accountId ?? 0,
+    clientId: item.clientId,
+    accountId: item.accountId,
     assetId: item.assetId,
-    assetTypeId: item.assetTypeId ?? 0,
+    assetTypeId: item.assetTypeId,
     assetTicker: item.assetTicker,
-    walletTypeId: item.walletTypeId ?? 0,
+    walletTypeId: item.walletTypeId,
     bookPurposeId: purpose.id,
     transactionStateId,
     createdBy,

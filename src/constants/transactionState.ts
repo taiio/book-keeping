@@ -87,7 +87,6 @@ export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Ob
     .map((state) => [state.id, state.code]),
 ) as Record<number, string>;
 
-
 export const TRANSACTION_STATE_TRANSITIONS = {
   AUTHORIZING: [TRANSACTION_STATE.AUTHORIZED.code, TRANSACTION_STATE.REJECTED.code],
 

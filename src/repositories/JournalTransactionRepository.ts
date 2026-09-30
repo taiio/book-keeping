@@ -19,6 +19,10 @@ export class JournalTransactionRepository {
     this.bookPostingRepository = bookPostingRepository!;
   }
 
+  async findById(id: number, tx: Transaction): Promise<JournalTransaction | null> {
+    return JournalTransaction.findByPk(id, { transaction: tx });
+  }
+
   async findByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction | null> {
     return JournalTransaction.findOne({ where: { transactionHash }, transaction: tx });
   }
@@ -52,6 +56,10 @@ export class JournalTransactionRepository {
     await journalTransaction.save({ transaction: tx });
 
     return journalTransaction;
+  }
+
+  async getCurrentTransactionStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
+    return this.bookPostingRepository.findLatestTransactionStateId(journalTransactionId, tx);
   }
 
   async getOrCreateJournalTransaction(params: GetOrCreateJournalTransactionParams, tx: Transaction): Promise<GetOrCreateJournalTransactionResult> {

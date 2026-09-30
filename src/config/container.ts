@@ -13,5 +13,4 @@ import '../ledger/LedgerPipeline';
 import '../handlers/SystemTransactionHandler';
 import '../handlers/BlockchainEventHandler';
 
-
 export { container };

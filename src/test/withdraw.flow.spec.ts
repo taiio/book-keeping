@@ -37,55 +37,49 @@ async function main() {
     sender: [
       {
         idempotencyToken: idempotencySender,
-        clientId: 1,
-        accountId: 1,
-        assetTypeId: 1,
-        walletTypeId: 1,
-        assetId: 1,
+        address: senderAddress,
         assetTicker: 'USDT',
         quantity: '100',
-        address: senderAddress,
+        account: {
+          clientId: 1,
+          accountId: 1,
+          assetTypeId: 1,
+          walletTypeId: 1,
+          assetId: 1,
+        },
       },
     ],
     recipient: [
       {
         idempotencyToken: idempotencyRecipent1,
-        clientId: 1,
-        accountId: 2,
-        assetTypeId: 1,
-        walletTypeId: 1,
-        assetId: 1,
+        address: recipentAddress1,
         assetTicker: 'USDT',
         quantity: '50',
-        address: recipentAddress1,
       },
       {
         idempotencyToken: idempotencyRecipent2,
-        clientId: 1,
-        accountId: 3,
-        assetTypeId: 1,
-        walletTypeId: 1,
-        assetId: 1,
+        address: recipentAddress2,
         assetTicker: 'USDT',
         quantity: '50',
-        address: recipentAddress2,
       },
     ],
     fee: {
       idempotencyToken: idempotencyFee,
-      clientId: 1,
-      accountId: 1,
-      assetTypeId: 2,
-      walletTypeId: 1,
-      assetId: 2,
       assetTicker: 'ETH',
       quantity: '1',
+      account: {
+        clientId: 1,
+        accountId: 1,
+        assetTypeId: 2,
+        walletTypeId: 1,
+        assetId: 2,
+      },
     },
   };
 
-  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.AUTHORIZING.id });
-  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.AUTHORIZED.id });
-  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: TRANSACTION_STATE.SENT.id });
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 1 });
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 2 });
+  await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 3 });
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,

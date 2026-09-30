@@ -22,7 +22,6 @@ import { BookHistory } from './BookHistory';
   ],
 })
 export class BookPosting extends Model {
-
   @PrimaryKey
   @AutoIncrement
   @Column({

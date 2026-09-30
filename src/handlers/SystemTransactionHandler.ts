@@ -4,13 +4,14 @@ import { autoInjectable, inject, singleton } from 'tsyringe';
 import { UnsupportedOperationError } from '../common/errors';
 import { UnitOfWork } from '../common/UnitOfWork';
 import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
-import { isInternalRecipient } from '../helpers';
+import { isInternalItem, toLegItem } from '../helpers';
 import { LedgerPipeline } from '../ledger/LedgerPipeline';
 import type { JournalTransaction } from '../models';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
 import type { AccountItem, GetOrCreateJournalTransactionParams, LedgerLeg, SystemTransactionResult, TransitionRequest, Withdraw } from '../types';
 
+/** The account side of a journal transaction: a sender is debited (`fromAccountId`), a recipient is credited (`toAccountId`). */
 type JournalTransactionSide = Pick<GetOrCreateJournalTransactionParams, 'transactionTypeId' | 'fromAccountId' | 'toAccountId'>;
 
 const SUPPORTED_SYSTEM_STATE_IDS: readonly number[] = [TRANSACTION_STATE.AUTHORIZING.id, TRANSACTION_STATE.AUTHORIZED.id, TRANSACTION_STATE.SENT.id];
@@ -86,6 +87,12 @@ export class SystemTransactionHandler {
 
     this.validateState(withdraw.transactionStateId);
 
+    if (!withdraw.fee.account) throw new Error('Fee account is required');
+
+    for (const sender of withdraw.sender) {
+      if (!sender.account) throw new Error(`Sender must be an internal account: idempotencyToken=${sender.idempotencyToken}`);
+    }
+
     for (const item of [...withdraw.sender, withdraw.fee]) {
       if (!/^[1-9]\d*$/.test(item.quantity)) throw new Error(`Quantity must be a positive integer string: ${item.quantity}`);
       if (!item.idempotencyToken) throw new Error('idempotencyToken is required on every item');
@@ -101,7 +108,7 @@ export class SystemTransactionHandler {
     return this.createJournalTransactions(
       withdraw,
       withdraw.sender,
-      (sender) => ({ transactionTypeId: TRANSACTION_TYPE.WITHDRAW, fromAccountId: sender.accountId ?? null }),
+      (sender) => ({ transactionTypeId: TRANSACTION_TYPE.WITHDRAW, fromAccountId: sender.account?.accountId ?? null }),
       tx,
     );
   }
@@ -109,16 +116,16 @@ export class SystemTransactionHandler {
   private createRecipientJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {
     return this.createJournalTransactions(
       withdraw,
-      withdraw.recipient.filter(isInternalRecipient),
-      (recipient) => ({ transactionTypeId: TRANSACTION_TYPE.DEPOSIT, toAccountId: recipient.accountId ?? null }),
+      withdraw.recipient.filter(isInternalItem),
+      (recipient) => ({ transactionTypeId: TRANSACTION_TYPE.DEPOSIT, toAccountId: recipient.account.accountId }),
       tx,
     );
   }
 
-  private async createJournalTransactions(
+  private async createJournalTransactions<T extends AccountItem>(
     withdraw: Withdraw,
-    items: AccountItem[],
-    toSide: (item: AccountItem) => JournalTransactionSide,
+    items: T[],
+    toSide: (item: T) => JournalTransactionSide,
     tx: Transaction,
   ): Promise<JournalTransaction[]> {
     const sourceContent = JSON.stringify(withdraw);
@@ -146,8 +153,11 @@ export class SystemTransactionHandler {
       const item = withdraw.sender[i];
       if (!item) throw new Error(`Missing sender at index ${i}`);
 
-      const legs: LedgerLeg[] = [{ item, amount: item.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT }];
-      if (i === 0) legs.push({ item: withdraw.fee, amount: withdraw.fee.quantity, purpose: BOOK_POSTING_PURPOSE.FEE });
+      if (!item.account) throw new Error(`Sender at index ${i} has no internal account`);
+
+      const { fee } = withdraw;
+      const legs: LedgerLeg[] = [{ item: toLegItem(item.account, item.assetTicker), amount: item.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT }];
+      if (i === 0) legs.push({ item: toLegItem(fee.account, fee.assetTicker), amount: fee.quantity, purpose: BOOK_POSTING_PURPOSE.FEE });
 
       return { journalTransaction, targetStateId: withdraw.transactionStateId, legs };
     });

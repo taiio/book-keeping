@@ -73,6 +73,7 @@ export class LedgerPipeline {
   }
 
   async processTransition(requests: TransitionRequest[], tx: Transaction): Promise<TransitionResult[]> {
+    console.log("requests", requests[0].legs);
     const results: TransitionResult[] = [];
 
     for (const request of requests) {
