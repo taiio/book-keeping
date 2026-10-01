@@ -1,0 +1,7 @@
+stateDiagram-v2
+    direction LR
+    [*] --> CONFIRMING: blockchain event, journal auto-created
+    CONFIRMING --> CONFIRMED: enough confirmations
+    CONFIRMED --> [*]
+    CONFIRMING --> FAILED: planned (reorg or dropped tx)
+    FAILED --> [*]

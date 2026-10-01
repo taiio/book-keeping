@@ -1,0 +1,37 @@
+flowchart TB
+    IN["<b>Inbound adapters (planned)</b><br/>gRPC API  |  Blockchain event consumer"]
+
+    subgraph APP["Application layer - handlers/"]
+        direction LR
+        STH["SystemTransactionHandler<br/>withdraw: AUTHORIZING, AUTHORIZED, SENT"]
+        BEH["BlockchainEventHandler<br/>CONFIRMING, CONFIRMED, deposit creation"]
+    end
+
+    subgraph DOM["Domain layer - ledger/"]
+        direction LR
+        LP["LedgerPipeline<br/>one transition = one atomic unit"]
+        SM["LedgerStateMachine<br/>allowed transitions"]
+        LM["ledgerMovements<br/>state to from/to book"]
+    end
+
+    PORTS["<b>Ports</b><br/>IUnitOfWork  |  IBlockchainSubmitter"]
+
+    subgraph INFRA["Infrastructure"]
+        direction LR
+        REPO["Repositories<br/>Book, BookPosting, JournalTransaction, histories"]
+        UOW["UnitOfWork<br/>Sequelize tx, READ_COMMITTED"]
+        SUB["Blockchain submitter adapter<br/>(to implement)"]
+    end
+
+    DB[("PostgreSQL")]
+    CHAIN(("Blockchain"))
+
+    IN --> APP
+    APP --> DOM
+    APP --> PORTS
+    DOM --> REPO
+    PORTS -.-> UOW
+    PORTS -.-> SUB
+    REPO --> DB
+    UOW --> DB
+    SUB --> CHAIN

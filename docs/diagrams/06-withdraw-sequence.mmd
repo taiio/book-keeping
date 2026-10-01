@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant API as Caller (gRPC, planned)
+    participant STH as SystemTransactionHandler
+    participant LP as LedgerPipeline
+    participant DB as PostgreSQL
+    participant SUB as BlockchainSubmitter
+    participant CH as Blockchain
+    participant BEH as BlockchainEventHandler
+
+    API->>STH: handle(withdraw, state=AUTHORIZING)
+    STH->>DB: BEGIN
+    STH->>LP: create journal transactions (sender, fee, internal recipients)
+    STH->>LP: processTransition(AUTHORIZING)
+    LP->>DB: lock books in ascending id order
+    LP->>DB: insert postings (debit CONFIRMED book, credit AUTHORIZING book)
+    STH->>DB: COMMIT
+
+    API->>STH: handle(withdraw, state=AUTHORIZED)
+    STH->>LP: processTransition(AUTHORIZED)
+
+    API->>STH: handle(withdraw, state=SENT)
+    STH->>LP: processTransition(SENT)
+    STH->>SUB: submit(withdraw)
+    SUB->>CH: broadcast transaction
+    SUB-->>STH: transactionHash
+    STH->>DB: attach transactionHash to all journals
+
+    CH-->>BEH: event status=CONFIRMING
+    BEH->>LP: processTransition(CONFIRMING)
+    CH-->>BEH: event status=CONFIRMED
+    BEH->>LP: processTransition(CONFIRMED)
+    LP->>DB: debit CONFIRMING book, credit External book
+    LP->>DB: journal state ACTIVE to COMPLETED

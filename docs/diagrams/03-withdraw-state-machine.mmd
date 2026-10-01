@@ -1,0 +1,15 @@
+stateDiagram-v2
+    direction LR
+    [*] --> AUTHORIZING: new withdraw request
+    AUTHORIZING --> AUTHORIZED: system approves
+    AUTHORIZED --> SENT: submitted to blockchain
+    SENT --> CONFIRMING: tx seen on-chain
+    CONFIRMING --> CONFIRMED: enough confirmations
+    CONFIRMED --> [*]
+
+    AUTHORIZING --> REJECTED: planned
+    AUTHORIZED --> REJECTED: planned
+    SENT --> FAILED: planned
+    CONFIRMING --> FAILED: planned
+    REJECTED --> [*]
+    FAILED --> [*]
