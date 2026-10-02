@@ -1,6 +1,7 @@
 import { sequelize } from '../config/database';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BookPurpose, TransactionState } from '../models';
+import { POST_SYNC_SQL } from './postSyncSql';
 
 /** Shape shared by the constant definitions that are seeded into a lookup table (book_purpose, transaction_state). */
 interface LookupDefinition {
@@ -31,19 +32,23 @@ async function seed(): Promise<void> {
 }
 
 const sql = `
-DROP TABLE public.book CASCADE;
+DROP TABLE IF EXISTS public.book CASCADE;
 
-DROP TABLE public.book_history CASCADE;
+DROP TABLE IF EXISTS public.book_history CASCADE;
 
-DROP TABLE public.book_posting CASCADE;
+DROP TABLE IF EXISTS public.book_posting CASCADE;
 
-DROP TABLE public.book_purpose CASCADE;
+DROP TABLE IF EXISTS public.book_purpose CASCADE;
 
-DROP TABLE public.journal_transaction CASCADE;
+DROP TABLE IF EXISTS public.journal_transaction CASCADE;
 
-DROP TABLE public.journal_transaction_history CASCADE;
+DROP TABLE IF EXISTS public.journal_transaction_history CASCADE;
 
-DROP TABLE public.transaction_state CASCADE;
+DROP TABLE IF EXISTS public.transaction_state CASCADE;
+
+DROP TABLE IF EXISTS public.inbox_event CASCADE;
+
+DROP TABLE IF EXISTS public.outbox_event CASCADE;
 
 `;
 
@@ -59,6 +64,10 @@ async function main(): Promise<void> {
     await sequelize.sync({
       alter: false,
     });
+
+    for (const statement of POST_SYNC_SQL) {
+      await sequelize.query(statement);
+    }
 
     console.log('Database sync completed successfully.');
 

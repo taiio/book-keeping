@@ -1,4 +1,4 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany, Index } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany } from 'sequelize-typescript';
 
 import { JournalTransactionHistory } from './JournalTransactionHistory';
 import { BookPosting } from './BookPosting';
@@ -16,7 +16,7 @@ import type { JournalTransactionStateId } from '../constants';
     },
     {
       name: 'idx_journal_transaction_transaction_hash',
-      fields: ['transaction_hash', 'request_id'],
+      fields: ['transaction_hash'],
     },
   ],
 })
@@ -58,14 +58,6 @@ export class JournalTransaction extends Model {
   declare toAccountId: number | null;
 
   @Column({
-    field: 'request_id',
-    type: DataType.INTEGER,
-    allowNull: true,
-  })
-  declare requestId: number | null;
-
-  @Index('idx_journal_transaction_transaction_hash')
-  @Column({
     field: 'transaction_hash',
     type: DataType.STRING(255),
     allowNull: true,
@@ -84,11 +76,11 @@ export class JournalTransaction extends Model {
 
   @Column({
     field: 'idempotency_token',
-    type: DataType.STRING(255),
-    allowNull: true,
+    type: DataType.STRING(36),
+    allowNull: false,
     unique: true,
   })
-  declare idempotencyToken: string | null;
+  declare idempotencyToken: string;
 
   @Column({
     field: 'source_content',

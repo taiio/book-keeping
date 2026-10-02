@@ -9,13 +9,8 @@ import { BookHistory } from './BookHistory';
   tableName: 'book',
   timestamps: false,
 
-  indexes: [
-    {
-      unique: true,
-      name: 'idx_unique_book',
-      fields: ['client_id', 'account_id', 'asset_type_id', 'wallet_type_id', 'book_purpose_id', 'transaction_state_id'],
-    },
-  ],
+  // The unique key (client, account, asset type, wallet type, purpose, state) is created by `scripts/postSyncSql.ts`
+  // with NULLS NOT DISTINCT, so the single external book of an account (state NULL) cannot be duplicated.
 })
 export class Book extends Model {
   @PrimaryKey

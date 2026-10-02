@@ -1,51 +1,76 @@
 import { InvalidTransitionError } from '../common/errors';
-import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK } from '../constants';
+import { CATCH_UP_PATHS, ENTRY_STATES, EXCEPTION_SOURCES, FORWARD_TRANSITIONS, isExceptionState } from './transitions';
 
-const S = TRANSACTION_STATE;
+export type TransitionDecision =
+  | { kind: 'APPLY' }
+  | { kind: 'CATCH_UP'; via: readonly number[] }
+  | { kind: 'DUPLICATE' }
+  | { kind: 'STALE' }
+  | { kind: 'EARLY' };
 
-const ENTRY_STATES: Readonly<Record<number, number>> = {
-  [TRANSACTION_TYPE.WITHDRAW]: S.AUTHORIZING.id,
-  [TRANSACTION_TYPE.DEPOSIT]: S.CONFIRMING.id,
-};
+export interface EvaluateParams {
+  transactionTypeId: number;
+  currentStateId: number | null;
+  targetStateId: number;
+  journalTransactionId: number;
+  journalTransactionState: number;
+}
 
-const TRANSITIONS: Readonly<Record<number, Readonly<Record<number, number[]>>>> = {
-  [TRANSACTION_TYPE.WITHDRAW]: {
-    [S.AUTHORIZING.id]: [S.AUTHORIZED.id],
-    [S.AUTHORIZED.id]: [S.SENT.id],
-    [S.SENT.id]: [S.CONFIRMING.id],
-    [S.CONFIRMING.id]: [S.CONFIRMED.id],
-  },
-  [TRANSACTION_TYPE.DEPOSIT]: {
-    [S.CONFIRMING.id]: [S.CONFIRMED.id],
-  },
-};
-
+/** Decides what a requested state change means for a journal transaction. Pure: no I/O. */
 export class LedgerStateMachine {
-  validate(
-    transactionTypeId: number,
-    currentStateId: number | null,
-    targetStateId: number,
-    journalTransactionId: number,
-    journalTransactionState: number,
-  ): void {
-    const entryState = ENTRY_STATES[transactionTypeId];
-    const transitions = TRANSITIONS[transactionTypeId];
+  evaluate(params: EvaluateParams): TransitionDecision {
+    const { transactionTypeId, currentStateId, targetStateId, journalTransactionId, journalTransactionState } = params;
 
-    if (entryState === undefined || !transitions) throw new InvalidTransitionError(journalTransactionId, currentStateId, targetStateId);
+    const invalid = () => new InvalidTransitionError(journalTransactionId, currentStateId, targetStateId);
 
-    if (currentStateId === null) {
-      if (targetStateId !== entryState) throw new InvalidTransitionError(journalTransactionId, currentStateId, targetStateId);
-      return;
+    if (ENTRY_STATES[transactionTypeId] === undefined) throw invalid();
+
+    if (currentStateId === targetStateId) return { kind: 'DUPLICATE' };
+
+    if (this.isLegal(transactionTypeId, currentStateId, targetStateId)) {
+      if (journalTransactionState !== JOURNAL_TRANSACTION_STATE.ACTIVE) throw invalid();
+      return { kind: 'APPLY' };
     }
 
-    const allowedTargets = transitions[currentStateId] ?? [];
+    // Already closed (REJECTED / FAILED): nothing else may happen to it.
+    if (currentStateId !== null && TRANSACTION_STATE_RANK[currentStateId] === undefined) throw invalid();
 
-    if (allowedTargets.includes(targetStateId)) {
-      if (journalTransactionState !== JOURNAL_TRANSACTION_STATE.ACTIVE)
-        throw new InvalidTransitionError(journalTransactionId, currentStateId, targetStateId);
-      return;
-    }
+    const currentRank = currentStateId === null ? -1 : TRANSACTION_STATE_RANK[currentStateId];
 
-    throw new InvalidTransitionError(journalTransactionId, currentStateId, targetStateId);
+    if (isExceptionState(targetStateId)) return this.evaluateException(transactionTypeId, targetStateId, currentRank, invalid);
+
+    const targetRank = TRANSACTION_STATE_RANK[targetStateId];
+
+    if (targetRank === undefined) throw invalid();
+
+    if (targetRank < currentRank) return { kind: 'STALE' };
+
+    const via = currentStateId === null ? undefined : CATCH_UP_PATHS[transactionTypeId]?.[currentStateId]?.[targetStateId];
+
+    return via ? { kind: 'CATCH_UP', via } : { kind: 'EARLY' };
+  }
+
+  private isLegal(transactionTypeId: number, currentStateId: number | null, targetStateId: number): boolean {
+    const forwardTargets = currentStateId === null ? [ENTRY_STATES[transactionTypeId]] : (FORWARD_TRANSITIONS[transactionTypeId]?.[currentStateId] ?? []);
+
+    if (forwardTargets.includes(targetStateId)) return true;
+
+    return (EXCEPTION_SOURCES[transactionTypeId]?.[targetStateId] ?? []).includes(currentStateId);
+  }
+
+  /** Too early (a source state has not been reached yet) is retryable; too late (already past every source) is not. */
+  private evaluateException(transactionTypeId: number, targetStateId: number, currentRank: number, invalid: () => Error): TransitionDecision {
+    const sourceRanks = (EXCEPTION_SOURCES[transactionTypeId]?.[targetStateId] ?? [])
+      .filter((source): source is number => source !== null)
+      .map((source) => TRANSACTION_STATE_RANK[source]);
+
+    if (sourceRanks.length === 0) throw invalid();
+
+    if (currentRank > Math.max(...sourceRanks)) throw invalid();
+
+    if (currentRank < Math.min(...sourceRanks)) return { kind: 'EARLY' };
+
+    throw invalid();
   }
 }

@@ -5,3 +5,5 @@ export { BookPurpose } from './BookPurpose';
 export { JournalTransaction } from './JournalTransaction';
 export { JournalTransactionHistory } from './JournalTransactionHistory';
 export { TransactionState } from './TransactionState';
+export { InboxEvent } from './InboxEvent';
+export { OutboxEvent } from './OutboxEvent';

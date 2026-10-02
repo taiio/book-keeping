@@ -3,7 +3,7 @@ import type { JournalTransaction } from '../models';
 import type { CreatedByParams, GetOrCreateResult, HistoryRecordParams, UpdatedByParams } from './common';
 
 export interface GetOrCreateJournalTransactionParams extends CreatedByParams {
-  idempotencyToken?: string | null;
+  idempotencyToken: string;
   uuidToken: string;
   transactionTypeId: number;
 
@@ -20,10 +20,6 @@ export type GetOrCreateJournalTransactionResult = GetOrCreateResult<{ journalTra
 export interface UpdateJournalTransactionParams extends UpdatedByParams {
   journalTransactionId: number;
 
-  transactionHash?: string;
-  targetTransactionStateId?: number;
-
-  expectedStateSequence?: readonly number[];
   journalTransactionState?: JournalTransactionStateId;
 }
 

@@ -6,6 +6,13 @@ import { BookPosting } from './BookPosting';
 @Table({
   tableName: 'book_history',
   timestamps: false,
+
+  indexes: [
+    {
+      name: 'idx_book_history_book',
+      fields: ['book_id', 'id'],
+    },
+  ],
 })
 export class BookHistory extends Model {
   @PrimaryKey

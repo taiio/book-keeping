@@ -1,30 +1,24 @@
 import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { NotFoundError } from '../common/errors';
+import { NotFoundError, TransactionHashConflictError } from '../common/errors';
 import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE } from '../constants';
+import type { JournalTransactionStateId } from '../constants';
 import { JournalTransaction } from '../models';
-import type { GetOrCreateJournalTransactionParams, GetOrCreateJournalTransactionResult, UpdateJournalTransactionParams } from '../types';
-import { BookPostingRepository } from './BookPostingRepository';
+import type { GetOrCreateJournalTransactionParams, GetOrCreateJournalTransactionResult } from '../types';
 import { JournalTransactionHistoryRepository } from './JournalTransactionHistoryRepository';
 
 @singleton()
 @autoInjectable()
 export class JournalTransactionRepository {
   private readonly journalTransactionHistoryRepository: JournalTransactionHistoryRepository;
-  private readonly bookPostingRepository: BookPostingRepository;
 
-  constructor(journalTransactionHistoryRepository?: JournalTransactionHistoryRepository, bookPostingRepository?: BookPostingRepository) {
+  constructor(journalTransactionHistoryRepository?: JournalTransactionHistoryRepository) {
     this.journalTransactionHistoryRepository = journalTransactionHistoryRepository!;
-    this.bookPostingRepository = bookPostingRepository!;
   }
 
   async findById(id: number, tx: Transaction): Promise<JournalTransaction | null> {
     return JournalTransaction.findByPk(id, { transaction: tx });
-  }
-
-  async findByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction | null> {
-    return JournalTransaction.findOne({ where: { transactionHash }, transaction: tx });
   }
 
   async findAllByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction[]> {
@@ -35,60 +29,61 @@ export class JournalTransactionRepository {
     return JournalTransaction.findAll({ where: { uuidToken }, order: [['id', 'ASC']], transaction: tx });
   }
 
-  async updateJournalTransaction(params: UpdateJournalTransactionParams, tx: Transaction): Promise<JournalTransaction> {
-    const journalTransaction = await JournalTransaction.findByPk(params.journalTransactionId, { transaction: tx, lock: tx.LOCK.UPDATE });
+  async findAllByIdempotencyTokens(idempotencyTokens: string[], tx: Transaction): Promise<JournalTransaction[]> {
+    if (idempotencyTokens.length === 0) return [];
 
-    if (!journalTransaction) {
-      throw new NotFoundError('JournalTransaction', params.journalTransactionId);
-    }
+    return JournalTransaction.findAll({ where: { idempotencyToken: idempotencyTokens }, order: [['id', 'ASC']], transaction: tx });
+  }
 
-    if (params.transactionHash !== undefined) {
-      journalTransaction.transactionHash = params.transactionHash;
-    }
+  /** Locks the row; every state change of a journal transaction starts here so concurrent workers serialize. */
+  async lockById(id: number, tx: Transaction): Promise<JournalTransaction> {
+    const journalTransaction = await JournalTransaction.findByPk(id, { transaction: tx, lock: tx.LOCK.UPDATE });
 
-    if (params.journalTransactionState !== undefined) {
-      journalTransaction.journalTransactionState = params.journalTransactionState;
-    }
-
-    journalTransaction.updatedDate = new Date();
-    journalTransaction.updatedBy = params.updatedBy ?? null;
-
-    await journalTransaction.save({ transaction: tx });
+    if (!journalTransaction) throw new NotFoundError('JournalTransaction', id);
 
     return journalTransaction;
   }
 
-  async getCurrentTransactionStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
-    return this.bookPostingRepository.findLatestTransactionStateId(journalTransactionId, tx);
+  async setJournalState(journalTransaction: JournalTransaction, journalTransactionState: JournalTransactionStateId, tx: Transaction): Promise<void> {
+    journalTransaction.journalTransactionState = journalTransactionState;
+    journalTransaction.updatedDate = new Date();
+
+    await journalTransaction.save({ transaction: tx });
+  }
+
+  /** The transaction hash is write-once: NULL -> value is allowed, the same value is a no-op, another value is a conflict. */
+  async setTransactionHashOnce(journalTransactionId: number, transactionHash: string, tx: Transaction): Promise<void> {
+    const journalTransaction = await this.lockById(journalTransactionId, tx);
+
+    if (journalTransaction.transactionHash === transactionHash) return;
+
+    if (journalTransaction.transactionHash !== null) {
+      throw new TransactionHashConflictError(journalTransactionId, journalTransaction.transactionHash, transactionHash);
+    }
+
+    journalTransaction.transactionHash = transactionHash;
+    journalTransaction.updatedDate = new Date();
+
+    await journalTransaction.save({ transaction: tx });
   }
 
   async getOrCreateJournalTransaction(params: GetOrCreateJournalTransactionParams, tx: Transaction): Promise<GetOrCreateJournalTransactionResult> {
-    const values = {
-      uuidToken: params.uuidToken,
-      transactionTypeId: params.transactionTypeId,
-      fromAccountId: params.fromAccountId ?? null,
-      toAccountId: params.toAccountId ?? null,
-      transactionHash: params.transactionHash ?? null,
-      sourceContent: params.sourceContent ?? null,
-      idempotencyToken: params.idempotencyToken ?? null,
-      journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
-      businessPostDateTime: params.businessPostDateTime,
-      createdBy: params.createdBy ?? null,
-    };
-
-    let journalTransaction: JournalTransaction;
-    let created: boolean;
-
-    if (params.idempotencyToken) {
-      [journalTransaction, created] = await JournalTransaction.findOrCreate({
-        where: { idempotencyToken: params.idempotencyToken },
-        defaults: values,
-        transaction: tx,
-      });
-    } else {
-      journalTransaction = await JournalTransaction.create(values, { transaction: tx });
-      created = true;
-    }
+    const [journalTransaction, created] = await JournalTransaction.findOrCreate({
+      where: { idempotencyToken: params.idempotencyToken },
+      defaults: {
+        uuidToken: params.uuidToken,
+        transactionTypeId: params.transactionTypeId,
+        fromAccountId: params.fromAccountId ?? null,
+        toAccountId: params.toAccountId ?? null,
+        transactionHash: params.transactionHash ?? null,
+        sourceContent: params.sourceContent ?? null,
+        idempotencyToken: params.idempotencyToken,
+        journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
+        businessPostDateTime: params.businessPostDateTime,
+        createdBy: params.createdBy ?? null,
+      },
+      transaction: tx,
+    });
 
     if (created) {
       await this.journalTransactionHistoryRepository.record(

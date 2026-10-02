@@ -1,4 +1,6 @@
 import 'reflect-metadata';
+import '../config/container';
+
 import { container } from 'tsyringe';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
@@ -6,6 +8,7 @@ import { sequelize } from '../config/database';
 import { TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
+import { OutboxRelay } from '../messaging/OutboxRelay';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
 import type { BlockchainMessagePayload, Withdraw } from '../types';
@@ -22,10 +25,10 @@ async function main() {
   const systemTransactionHandler = container.resolve(SystemTransactionHandler);
   const blockchainEventHandler = container.resolve(BlockchainEventHandler);
   const uuidToken = randomUUID();
-  const senderAddress = '66f83428e0f1dd12d40933d9ed081bab3';
-  const recipentAddress1 = '66f83428e0f1dd12d40933d9ed081bab4';
-  const recipentAddress2 = '66f83428e0f1dd12d40933d9ed081bab5';
-  const feeAddress = '66f83428e0f1dd12d40933d9ed081bab6';
+  const senderAddress = randomBytes(20).toString('hex');
+  const recipentAddress1 = randomBytes(20).toString('hex');
+  const recipentAddress2 = randomBytes(20).toString('hex');
+  const feeAddress = randomBytes(20).toString('hex');
   const idempotencySender = randomUUID();
   const idempotencyRecipent1 = randomUUID();
   const idempotencyRecipent2 = randomUUID();
@@ -81,6 +84,8 @@ async function main() {
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 1 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 2 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 3 });
+  // SENT only queues the broadcast in the outbox; the relay submits it and stores the transaction hash.
+  await container.resolve(OutboxRelay).runOnce();
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,

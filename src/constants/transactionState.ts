@@ -80,23 +80,3 @@ export const TRANSACTION_STATE_SEQUENCE = [
 export const TRANSACTION_STATE_RANK: Readonly<Record<number, number>> = Object.fromEntries(
   TRANSACTION_STATE_SEQUENCE.map((stateId, index) => [stateId, index]),
 );
-
-export const TRANSACTION_STATE_CODE_BY_ID: Readonly<Record<number, string>> = Object.fromEntries(
-  Object.values(TRANSACTION_STATE)
-    .filter((state) => state.id !== null)
-    .map((state) => [state.id, state.code]),
-) as Record<number, string>;
-
-export const TRANSACTION_STATE_TRANSITIONS = {
-  AUTHORIZING: [TRANSACTION_STATE.AUTHORIZED.code, TRANSACTION_STATE.REJECTED.code],
-
-  AUTHORIZED: [TRANSACTION_STATE.SENT.code, TRANSACTION_STATE.REJECTED.code],
-
-  SENT: [TRANSACTION_STATE.CONFIRMING.code, TRANSACTION_STATE.FAILED.code],
-
-  CONFIRMING: [TRANSACTION_STATE.CONFIRMED.code, TRANSACTION_STATE.FAILED.code],
-
-  CONFIRMED: [],
-  REJECTED: [],
-  FAILED: [],
-} as const;

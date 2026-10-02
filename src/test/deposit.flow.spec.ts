@@ -3,19 +3,17 @@ import { container } from 'tsyringe';
 
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
-import { UnitOfWork } from '../common/UnitOfWork';
 import { sequelize } from '../config/database';
 import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import type { BlockchainMessagePayload } from '../types';
 
 async function main() {
-  const unitOfWork = container.resolve(UnitOfWork);
   const blockchainEventHandler = container.resolve(BlockchainEventHandler);
 
-  await unitOfWork.execute(async (tx) => {
+  {
     const payload: BlockchainMessagePayload = {
-      uuidToken: crypto.randomUUID(),
+      uuidToken: randomUUID(),
       transactionHash: randomBytes(32).toString('hex'),
       blockNumber: randomInt(10000),
       status: TRANSACTION_STATE.CONFIRMING.id,
@@ -58,7 +56,7 @@ async function main() {
     await blockchainEventHandler.handle({ ...payload, status: TRANSACTION_STATE.CONFIRMED.id });
 
     console.log('Deposit flow completed');
-  });
+  }
   await sequelize.close();
 }
 main().catch((error) => {

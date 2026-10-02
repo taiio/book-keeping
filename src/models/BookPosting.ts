@@ -19,6 +19,10 @@ import { BookHistory } from './BookHistory';
       unique: true,
       fields: ['idempotency_token'],
     },
+    {
+      name: 'idx_book_posting_journal_transaction',
+      fields: ['journal_transaction_id'],
+    },
   ],
 })
 export class BookPosting extends Model {

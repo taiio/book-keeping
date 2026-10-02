@@ -16,18 +16,6 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
-  async findByDepositAddress(address: string, assetTicker: string, tx: Transaction): Promise<Book | null> {
-    return Book.findOne({
-      where: {
-        address,
-        assetTicker,
-        bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
-        transactionStateId: TRANSACTION_STATE.CONFIRMED.id,
-      },
-      transaction: tx,
-    });
-  }
-
   async findBook(params: BookParams, tx: Transaction): Promise<Book | null> {
     return Book.findOne({ where: this.bookKey(params), transaction: tx });
   }

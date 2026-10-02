@@ -1,5 +1,4 @@
 import type { BlockchainTransactionStateId, BookPostingPurposeId } from '../constants';
-import type { Book } from '../models';
 import type { AccountIdentity, AssetAmount } from './account';
 
 export interface BlockchainParty {
@@ -50,9 +49,4 @@ export interface BlockchainMessagePayload {
   networkFee: BlockchainNetworkFee;
 
   error?: BlockchainError;
-}
-
-export interface DepositBookMatch {
-  book: Book;
-  recipient: BlockchainRecipient;
 }

@@ -2,8 +2,11 @@ import { randomUUID } from 'crypto';
 import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
+import { IdempotencyConflictError } from '../common/errors';
+import type { BookPostingPurposeId } from '../constants';
+import { legItemFromBook } from '../helpers';
 import { Book, BookPosting } from '../models';
-import type { CreateBookPostingParams } from '../types';
+import type { CreateBookPostingParams, Holding } from '../types';
 import { BookRepository } from './BookRepository';
 
 @singleton()
@@ -15,8 +18,12 @@ export class BookPostingRepository {
     this.bookRepository = bookRepository!;
   }
 
+  /**
+   * Writes one posting, idempotently by token. Re-sending the same token with the same content is a no-op;
+   * re-sending it with different content is a conflict (it would otherwise be silently swallowed).
+   */
   async createBookPosting(params: CreateBookPostingParams, tx: Transaction): Promise<BookPosting> {
-    const lockedBook = await this.bookRepository.lockBookById(params.bookId, tx);
+    const lockedBook = params.lockedBook ?? (await this.bookRepository.lockBookById(params.bookId, tx));
     const nextSequenceNo = Number(lockedBook.lastSequenceNo) + 1;
 
     const [posting, created] = await BookPosting.findOrCreate({
@@ -37,6 +44,7 @@ export class BookPostingRepository {
     });
 
     if (!created) {
+      this.assertSameContent(posting, params);
       return posting;
     }
 
@@ -54,19 +62,62 @@ export class BookPostingRepository {
     return posting;
   }
 
-  async countByJournalTransactionId(journalTransactionId: number, tx: Transaction): Promise<number> {
-    return BookPosting.count({ where: { journalTransactionId }, transaction: tx });
-  }
+  /**
+   * What a journal transaction currently holds, per book and purpose (sum of its postings on that book).
+   * Only non-zero holdings are returned.
+   */
+  async findHoldings(journalTransactionId: number, tx: Transaction): Promise<Holding[]> {
+    const postings = await BookPosting.findAll({
+      where: { journalTransactionId },
+      attributes: ['bookId', 'bookPostingPurposeId', 'amount'],
+      transaction: tx,
+    });
 
-  async findLatestTransactionStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
-    const latestPosting = await BookPosting.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction: tx });
+    const totals = new Map<string, { bookId: number; purpose: BookPostingPurposeId; amount: bigint }>();
 
-    if (!latestPosting) {
-      return null;
+    for (const posting of postings) {
+      const key = `${posting.bookId}|${posting.bookPostingPurposeId}`;
+      const total = totals.get(key) ?? { bookId: posting.bookId, purpose: posting.bookPostingPurposeId as BookPostingPurposeId, amount: 0n };
+
+      total.amount += BigInt(posting.amount);
+      totals.set(key, total);
     }
 
-    const book = await Book.findByPk(latestPosting.bookId, { transaction: tx });
+    if (totals.size === 0) return [];
 
-    return book?.transactionStateId ?? null;
+    const books: Book[] = await Book.findAll({ where: { id: Array.from(new Set(Array.from(totals.values(), (total) => total.bookId))) }, transaction: tx });
+    const bookById = new Map(books.map((book) => [book.id, book]));
+
+    const holdings: Holding[] = [];
+
+    for (const { bookId, purpose, amount } of totals.values()) {
+      const book = bookById.get(bookId);
+
+      if (!book || amount === 0n) continue;
+
+      holdings.push({
+        ref: { bookPurposeId: book.bookPurposeId, transactionStateId: book.transactionStateId },
+        item: legItemFromBook(book),
+        purpose,
+        amount,
+      });
+    }
+
+    return holdings;
+  }
+
+  private assertSameContent(existing: BookPosting, params: CreateBookPostingParams): void {
+    const sameContent =
+      existing.bookId === params.bookId &&
+      existing.journalTransactionId === params.journalTransactionId &&
+      existing.bookPostingPurposeId === params.bookPostingPurposeId &&
+      BigInt(existing.amount) === BigInt(params.amount);
+
+    if (!sameContent) {
+      throw new IdempotencyConflictError(
+        params.idempotencyToken,
+        `existing(book=${existing.bookId}, amount=${existing.amount}) differs from incoming(book=${params.bookId}, amount=${params.amount})`,
+      );
+    }
   }
 }

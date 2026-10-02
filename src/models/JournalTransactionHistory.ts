@@ -8,6 +8,13 @@ import type { JournalTransactionStateId } from '../constants';
 @Table({
   tableName: 'journal_transaction_history',
   timestamps: false,
+
+  indexes: [
+    {
+      name: 'idx_journal_transaction_history_journal_transaction',
+      fields: ['journal_transaction_id', 'id'],
+    },
+  ],
 })
 export class JournalTransactionHistory extends Model {
   @PrimaryKey
@@ -48,13 +55,6 @@ export class JournalTransactionHistory extends Model {
     },
   })
   declare journalTransactionState: JournalTransactionStateId;
-
-  @Column({
-    field: 'request_id',
-    type: DataType.INTEGER,
-    allowNull: true,
-  })
-  declare requestId: number | null;
 
   @Column({
     field: 'transaction_hash',

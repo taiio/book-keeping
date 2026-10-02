@@ -1,5 +1,6 @@
 import type { JournalTransactionStateId, TRANSACTION_TYPE, TransactionStateId } from '../constants';
 import type { AccountItem, FeeItem } from './account';
+import type { TransitionOutcome } from './ledger';
 
 export interface PoolRef {
   poolId: string;
@@ -46,7 +47,9 @@ export type SystemTransaction = Withdraw | Stake | Unstake | Restake;
 
 export interface SystemTransactionResult {
   uuidToken: string;
+  /** False when nothing changed: the message was a replay or the transaction is already past that state. */
   processed: boolean;
+  outcome: TransitionOutcome;
   transactionHash: string | null;
   senderJournalTransactionIds: number[];
   recipientJournalTransactionIds: number[];
