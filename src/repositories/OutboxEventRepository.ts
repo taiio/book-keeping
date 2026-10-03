@@ -4,6 +4,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { NotFoundError } from '../common/errors';
 import { MESSAGING_LIMITS, OUTBOX_EVENT_STATUS, SORT_DIRECTION } from '../constants';
+import type { OutboxEventTypeId } from '../constants';
 import { nextAttemptAfter } from '../helpers';
 import { OutboxEvent } from '../models';
 import type { EnqueueOutboxEventParams } from '../types';
@@ -33,9 +34,9 @@ export class OutboxEventRepository {
     return event;
   }
 
-  async claimBatch(limit: number, tx: Transaction, now: Date = new Date()): Promise<OutboxEvent[]> {
+  async claimBatch(limit: number, tx: Transaction, eventTypes?: readonly OutboxEventTypeId[], now: Date = new Date()): Promise<OutboxEvent[]> {
     const events = await OutboxEvent.findAll({
-      where: { status: OUTBOX_EVENT_STATUS.NEW, nextAttemptAt: { [Op.lte]: now } },
+      where: { status: OUTBOX_EVENT_STATUS.NEW, nextAttemptAt: { [Op.lte]: now }, ...(eventTypes ? { eventType: [...eventTypes] } : {}) },
       order: [['id', SORT_DIRECTION.ASC]],
       limit,
       transaction: tx,

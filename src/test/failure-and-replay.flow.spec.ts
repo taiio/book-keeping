@@ -1,10 +1,10 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
-import { randomBytes, randomInt, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { sequelize } from '../config/database';
 import { container } from '../config/container';
-import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, OUTBOX_EVENT_TYPE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { InboxProcessor } from '../messaging/InboxProcessor';
@@ -71,21 +71,28 @@ function scenario(user: AccountIdentity, feePayer: AccountIdentity) {
     networkFee: { idempotencyToken: feeToken, payerAddress: 'fee-address', assetTicker: ETH.ticker, quantity: realFee, account: feePayer },
   });
 
-  return { withdraw, chain, transactionHash };
+  return { withdraw, chain, transactionHash, uuidToken };
 }
 
 async function main(): Promise<void> {
-  const submitted: string[] = [];
-  const submitter = (hashOf: () => string): IBlockchainSubmitter => ({
-    async submit() {
-      submitted.push(hashOf());
-      return { transactionHash: hashOf() };
+  const hashes = new Map<string, string>();
+  const hashOf = (uuidToken: string) => hashes.get(uuidToken) ?? createHash('sha256').update(uuidToken).digest('hex');
+
+  const submitter: IBlockchainSubmitter = {
+    async submit(transaction) {
+      return { transactionHash: hashOf(transaction.uuidToken) };
     },
-  });
+  };
+
+  container.registerInstance(BLOCKCHAIN_SUBMITTER, submitter);
 
   const system = container.resolve(SystemTransactionHandler);
   const blockchain = container.resolve(BlockchainEventHandler);
-  const relay = () => container.resolve(OutboxRelay);
+  const broadcast = async () => {
+    const summary = await container.resolve(OutboxRelay).drain(100, [OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED]);
+
+    assert.equal(summary.failed, 0);
+  };
 
   const newCase = async () => {
     const user = identity(randomInt(1_000_000, 9_000_000), USDT);
@@ -96,9 +103,14 @@ async function main(): Promise<void> {
 
     const flow = scenario(user, feePayer);
 
-    container.registerInstance(BLOCKCHAIN_SUBMITTER, submitter(() => flow.transactionHash));
+    hashes.set(flow.uuidToken, flow.transactionHash);
 
-    return { user, feePayer, ...flow };
+    const externalBefore = {
+      user: await amountOf(user.accountId, USDT.assetTypeId, null),
+      feePayer: await amountOf(feePayer.accountId, ETH.assetTypeId, null),
+    };
+
+    return { user, feePayer, externalBefore, ...flow };
   };
 
   {
@@ -123,24 +135,24 @@ async function main(): Promise<void> {
   }
 
   {
-    const { user, feePayer, withdraw, chain } = await newCase();
+    const { user, feePayer, withdraw, chain, externalBefore } = await newCase();
 
     for (const state of [S.AUTHORIZING.id, S.AUTHORIZED.id, S.SENT.id]) await system.handle(withdraw(state));
 
-    await relay().runOnce();
+    await broadcast();
     await blockchain.handle(chain(S.CONFIRMING.id));
     await blockchain.handle(chain(BLOCKCHAIN_TRANSACTION_STATE_ID.FAILED, '8'));
 
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 1000n);
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.CONFIRMED.id), 92n);
-    assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, null), 8n);
+    assert.equal((await amountOf(feePayer.accountId, ETH.assetTypeId, null)) - externalBefore.feePayer, 8n);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
 
     console.log('B. failed after mining: ok');
   }
 
   {
-    const { user, feePayer, withdraw, chain } = await newCase();
+    const { user, feePayer, withdraw, chain, externalBefore } = await newCase();
     const inbox = container.resolve(InboxService);
     const processor = container.resolve(InboxProcessor);
 
@@ -152,7 +164,7 @@ async function main(): Promise<void> {
 
     assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, confirming), INBOX_EVENT_STATUS.PENDING);
 
-    await relay().runOnce();
+    await broadcast();
     await processor.drainParked();
 
     assert.equal((await InboxEvent.findOne({ where: { eventId: confirming.eventId } }))!.status, INBOX_EVENT_STATUS.APPLIED);
@@ -166,9 +178,9 @@ async function main(): Promise<void> {
     assert.equal(stored.status, INBOX_EVENT_STATUS.APPLIED);
     assert.equal(stored.deliveryCount, 3);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
-    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, null), 600n);
+    assert.equal((await amountOf(user.accountId, USDT.assetTypeId, null)) - externalBefore.user, 600n);
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.CONFIRMED.id), 92n);
-    assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, null), 8n);
+    assert.equal((await amountOf(feePayer.accountId, ETH.assetTypeId, null)) - externalBefore.feePayer, 8n);
 
     await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) });
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
@@ -176,7 +188,7 @@ async function main(): Promise<void> {
     console.log('C. inbox out-of-order + replay: ok');
   }
 
-  console.log(`failure-and-replay flows completed (submissions: ${submitted.length})`);
+  console.log('failure-and-replay flows completed');
   await sequelize.close();
 }
 

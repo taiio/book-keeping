@@ -1,6 +1,8 @@
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { LedgerError } from '../common/errors';
+import { MESSAGING_LIMITS } from '../constants';
+import type { OutboxEventTypeId } from '../constants';
 import { UnitOfWork } from '../common/UnitOfWork';
 import { OutboxEventRepository } from '../repositories/OutboxEventRepository';
 import type { OutboxEventView, OutboxRelaySummary } from '../types';
@@ -21,8 +23,24 @@ export class OutboxRelay {
     this.registry = registry!;
   }
 
-  async runOnce(limit = 20): Promise<OutboxRelaySummary> {
-    const events = await this.unitOfWork.execute((tx) => this.outboxEventRepository.claimBatch(limit, tx));
+  async drain(limit = 100, eventTypes?: readonly OutboxEventTypeId[]): Promise<OutboxRelaySummary> {
+    const total: OutboxRelaySummary = { claimed: 0, published: 0, failed: 0 };
+
+    for (let pass = 0; pass < MESSAGING_LIMITS.DRAIN_MAX_PASSES; pass++) {
+      const summary = await this.runOnce(limit, eventTypes);
+
+      total.claimed += summary.claimed;
+      total.published += summary.published;
+      total.failed += summary.failed;
+
+      if (summary.claimed === 0) break;
+    }
+
+    return total;
+  }
+
+  async runOnce(limit = 20, eventTypes?: readonly OutboxEventTypeId[]): Promise<OutboxRelaySummary> {
+    const events = await this.unitOfWork.execute((tx) => this.outboxEventRepository.claimBatch(limit, tx, eventTypes));
     const summary: OutboxRelaySummary = { claimed: events.length, published: 0, failed: 0 };
 
     for (const event of events) {

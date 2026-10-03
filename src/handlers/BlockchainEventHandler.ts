@@ -42,8 +42,12 @@ export class BlockchainEventHandler {
     const outgoingTokens = [...payload.senders.map((sender) => sender.idempotencyToken), payload.networkFee.idempotencyToken].filter((token): token is string => !!token);
     const outgoing = await this.ledgerPipeline.findByIdempotencyTokens(outgoingTokens, tx);
 
-    if (outgoing.length > 0 || payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMING) {
-      throw new TransitionNotReadyError(payload.transactionHash, null, payload.status);
+    if (outgoing.length > 0) {
+      throw new TransitionNotReadyError(payload.transactionHash, null, payload.status, 'a system withdraw matches this event but its transaction hash is not stored yet');
+    }
+
+    if (payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMING) {
+      throw new TransitionNotReadyError(payload.transactionHash, null, payload.status, 'no journal transaction exists yet and only CONFIRMING can start a deposit');
     }
 
     return this.createDepositJournalTransactions(payload, tx);

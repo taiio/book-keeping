@@ -1,20 +1,18 @@
-import assert from 'node:assert/strict';
-import { describe, it } from '@jest/globals';
+import * as assert from 'node:assert/strict';
 
 import { ValidationError } from '../../common/errors';
 import { TRANSACTION_STATE, TRANSACTION_TYPE } from '../../constants';
 import { isFeePaidBy } from '../../helpers';
 import type { Withdraw } from '../../types';
 import { validateWithdraw } from '../../validation';
-import { randomUUID } from 'node:crypto';
 
-const TOKEN_A = randomUUID();
-const TOKEN_B = randomUUID();
+const TOKEN_A = '0b6f2c1e-8a44-4d1b-9c55-3a1d7e9f20c2';
+const TOKEN_B = '1c7a3d2f-9b55-4e2c-8d66-4b2e8f0a31d3';
 const identity = (accountId: number) => ({ clientId: 1, accountId, assetId: 1, assetTypeId: 1, walletTypeId: 1 });
 
 const withdraw = (senderAccount: number, feeAccount: number, senderToken = TOKEN_A, feeToken = TOKEN_A): Withdraw => ({
   type: TRANSACTION_TYPE.WITHDRAW,
-  uuidToken: randomUUID(),
+  uuidToken: '2d8b4e3a-0c66-4f3d-9e77-5c3f9a1b42e4',
   transactionStateId: TRANSACTION_STATE.AUTHORIZING.id,
   sender: [{ idempotencyToken: senderToken, assetTicker: 'USDT', quantity: '10', account: identity(senderAccount) }],
   recipient: [{ idempotencyToken: TOKEN_B.replace('1c7a', '3e9c'), assetTicker: 'USDT', quantity: '10', address: 'x' }],

@@ -1,5 +1,6 @@
-import assert from 'node:assert/strict';
-import { beforeEach, describe, it } from '@jest/globals';
+import * as assert from 'node:assert/strict';
+
+jest.mock('../../config/database', () => ({ sequelize: {} }));
 
 import { IdempotencyConflictError, InvalidTransitionError, TransactionHashConflictError } from '../../common/errors';
 import { INBOX_EVENT_KIND, INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../constants';

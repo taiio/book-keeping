@@ -1,13 +1,11 @@
-import assert from 'node:assert/strict';
-import { describe, it } from '@jest/globals';
+import * as assert from 'node:assert/strict';
 
 import { ValidationError } from '../../common/errors';
 import { POSTING_TOKEN } from '../../constants';
 import { bookPostingIdempotencyToken, deterministicUuid } from '../../helpers';
 import { isUuid } from '../../validation/common';
-import { randomUUID } from 'node:crypto';
 
-const UUID = randomUUID();
+const UUID = '0b6f2c1e-8a44-4d1b-9c55-3a1d7e9f20c2';
 
 describe('bookPostingIdempotencyToken', () => {
   it('is {jt}-{attempt}-{type}-{state}-{index}', () => {

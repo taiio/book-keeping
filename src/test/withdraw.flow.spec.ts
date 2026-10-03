@@ -1,11 +1,9 @@
 import 'reflect-metadata';
-import '../config/container';
-
 import { container } from 'tsyringe';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { sequelize } from '../config/database';
-import { TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { TRANSACTION_STATE, TRANSACTION_TYPE, OUTBOX_EVENT_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { OutboxRelay } from '../messaging/OutboxRelay';
@@ -84,7 +82,7 @@ async function main() {
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 1 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 2 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 3 });
-  await container.resolve(OutboxRelay).runOnce();
+  await container.resolve(OutboxRelay).drain(100, [OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED]);
 
   const payload: BlockchainMessagePayload = {
     uuidToken: withdraw.uuidToken,
