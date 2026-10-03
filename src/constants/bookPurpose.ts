@@ -10,8 +10,6 @@ export const BOOK_PURPOSE = {
 
   BLOCKCHAIN_EXTERNAL_ACCOUNT: {
     id: 2,
-    // NOTE: the persisted code keeps its historical spelling ("BLOCKCHIAN") because it is stored in the DB
-    // (book_purpose.code / book.name). Fixing it requires a data migration, so only the TS key was corrected.
     code: 'BLOCKCHAIN_EXTERNAL_ACCOUNT',
     name: 'Blockchain External Account Book',
     description: 'Represents assets or accounts outside the custody ledger, such as external blockchain or settlement accounts.',

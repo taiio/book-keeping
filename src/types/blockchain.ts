@@ -9,7 +9,6 @@ export interface BlockchainParty {
 export interface BlockchainSender extends BlockchainParty {
   assetTicker: string;
   quantity: string;
-  /** Internal account identity only; the asset (`assetTicker`/`quantity`) lives on the sender itself. */
   account?: AccountIdentity;
 }
 
@@ -19,7 +18,6 @@ export interface BlockchainRecipient extends BlockchainParty, AssetAmount {
   account?: AccountIdentity;
 }
 
-/** Internal account identity of the fee payer; the asset (`assetTicker`/`quantity`) lives on the network fee itself. */
 export interface BlockchainFeeAccount extends AccountIdentity {
   idempotencyToken?: string;
 }

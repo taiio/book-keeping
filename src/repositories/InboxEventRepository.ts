@@ -3,7 +3,7 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { NotFoundError } from '../common/errors';
-import { INBOX_EVENT_STATUS, MESSAGING_LIMITS } from '../constants';
+import { INBOX_EVENT_STATUS, MESSAGING_LIMITS, SORT_DIRECTION } from '../constants';
 import type { InboxEventStatusId } from '../constants';
 import { nextAttemptAfter } from '../helpers';
 import { InboxEvent } from '../models';
@@ -12,7 +12,6 @@ import type { InboxOutcomeDetail, ReceiveInboxEventParams, ReceiveInboxEventResu
 @singleton()
 @autoInjectable()
 export class InboxEventRepository {
-  /** Stores a message once per event id; a repeated delivery only counts. */
   async receive(params: ReceiveInboxEventParams, tx: Transaction): Promise<ReceiveInboxEventResult> {
     const now = new Date();
 
@@ -40,7 +39,6 @@ export class InboxEventRepository {
 
     const conflict = event.payloadHash !== params.payloadHash;
 
-    // Atomic increment: two workers receiving the same replay must both be counted.
     await InboxEvent.increment('deliveryCount', { by: 1, where: { id: event.id }, transaction: tx });
     await InboxEvent.update(
       { lastReceivedAt: now, ...(conflict ? { lastError: `Redelivered with a different payload at ${now.toISOString()}` } : {}) },
@@ -58,11 +56,10 @@ export class InboxEventRepository {
     return event;
   }
 
-  /** PENDING events, oldest first. With `dueBefore`, only those whose retry time has come. */
   async findPending(limit: number, dueBefore?: Date): Promise<InboxEvent[]> {
     return InboxEvent.findAll({
       where: { status: INBOX_EVENT_STATUS.PENDING, ...(dueBefore ? { nextAttemptAt: { [Op.lte]: dueBefore } } : {}) },
-      order: [['id', 'ASC']],
+      order: [['id', SORT_DIRECTION.ASC]],
       limit,
     });
   }
@@ -76,7 +73,6 @@ export class InboxEventRepository {
     await event.save({ transaction: tx });
   }
 
-  /** Keeps the event PENDING (transient failure) and schedules the next try with backoff. */
   async scheduleRetry(event: InboxEvent, error: string, tx: Transaction): Promise<void> {
     event.attempts += 1;
     event.lastError = error;
@@ -85,7 +81,6 @@ export class InboxEventRepository {
     await event.save({ transaction: tx });
   }
 
-  /** Keeps the event PENDING because it is waiting for another event. Does not use up an attempt. */
   async park(event: InboxEvent, reason: string, tx: Transaction): Promise<void> {
     event.lastError = reason;
     event.nextAttemptAt = new Date(Date.now() + MESSAGING_LIMITS.PARKED_RETRY_MS);

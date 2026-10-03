@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ValidationError } from '../../common/errors';
-import { bookPostingIdempotencyToken, deterministicUuid, MAX_POSTING_TOKEN_LENGTH } from '../../helpers';
+import { POSTING_TOKEN } from '../../constants';
+import { bookPostingIdempotencyToken, deterministicUuid } from '../../helpers';
 import { isUuid } from '../../validation/common';
+import { randomUUID } from 'node:crypto';
 
-const UUID = '0b6f2c1e-8a44-4d1b-9c55-3a1d7e9f20c2';
+const UUID = randomUUID();
 
 describe('bookPostingIdempotencyToken', () => {
-  it('is {jt}-{type}-{state}-{attempt}-{index}', () => {
-    assert.equal(bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 2, transactionStateId: 1, attempt: 1, index: 1 }), `${UUID}-2-1-1-1`);
+  it('is {jt}-{attempt}-{type}-{state}-{index}', () => {
+    assert.equal(bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 2, transactionStateId: 1, attempt: 1, index: 1 }), `${UUID}-1-2-1-1`);
   });
 
   it('is deterministic and differs by attempt and index', () => {
@@ -23,7 +25,7 @@ describe('bookPostingIdempotencyToken', () => {
   it('stays within the column size for the largest ids', () => {
     const token = bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 5, transactionStateId: 91, attempt: 99, index: 99 });
 
-    assert.ok(token.length <= MAX_POSTING_TOKEN_LENGTH);
+    assert.ok(token.length <= POSTING_TOKEN.MAX_LENGTH);
   });
 
   it('rejects attempt or index below 1 and tokens that do not fit', () => {

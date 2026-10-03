@@ -1,14 +1,12 @@
 import { UnsupportedOperationError } from '../common/errors';
-import { BLOCKCHAIN_TRANSACTION_STATE_ID } from '../constants';
+import { SUPPORTED_BLOCKCHAIN_STATUS_IDS } from '../constants';
 import type { BlockchainMessagePayload } from '../types';
 import { assertNonNegativeQuantity, assertPresent, assertUuid } from './common';
-
-const SUPPORTED_STATUSES: readonly number[] = Object.values(BLOCKCHAIN_TRANSACTION_STATE_ID);
 
 export function validateBlockchainMessage(payload: BlockchainMessagePayload): void {
   assertPresent(payload.transactionHash, 'transactionHash');
 
-  if (!SUPPORTED_STATUSES.includes(payload.status)) {
+  if (!SUPPORTED_BLOCKCHAIN_STATUS_IDS.includes(payload.status)) {
     throw new UnsupportedOperationError(`blockchain status ${payload.status}`);
   }
 

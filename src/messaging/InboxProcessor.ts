@@ -2,25 +2,15 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { IdempotencyConflictError, isRetryable, LedgerError, TransactionHashConflictError, TransitionNotReadyError } from '../common/errors';
 import { UnitOfWork } from '../common/UnitOfWork';
-import { INBOX_EVENT_STATUS, MESSAGING_LIMITS } from '../constants';
+import { INBOX_EVENT_STATUS, INBOX_STATUS_BY_OUTCOME, MESSAGING_LIMITS } from '../constants';
 import type { InboxEventStatusId } from '../constants';
 import type { InboxEvent } from '../models';
 import { InboxEventRepository } from '../repositories/InboxEventRepository';
-import type { InboxProcessSummary, TransitionOutcome } from '../types';
+import type { InboxProcessSummary } from '../types';
 import { InboxHandlerRegistry } from './InboxHandlerRegistry';
-
-const STATUS_BY_OUTCOME: Readonly<Record<TransitionOutcome, InboxEventStatusId>> = {
-  APPLIED: INBOX_EVENT_STATUS.APPLIED,
-  DUPLICATE: INBOX_EVENT_STATUS.DUPLICATE,
-  STALE: INBOX_EVENT_STATUS.STALE,
-};
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error));
 
-/**
- * Applies stored inbox events. Applying and marking the event APPLIED commit in ONE transaction, so a crash can never
- * leave an event half done; if it fails, the transaction rolls back and the failure is recorded in a second one.
- */
 @singleton()
 @autoInjectable()
 export class InboxProcessor {
@@ -34,7 +24,6 @@ export class InboxProcessor {
     this.registry = registry!;
   }
 
-  /** Processes one event and returns its status afterwards (PENDING means it stays parked). */
   async process(eventId: string): Promise<InboxEventStatusId> {
     try {
       return await this.unitOfWork.execute(async (tx) => {
@@ -43,7 +32,7 @@ export class InboxProcessor {
         if (event.status !== INBOX_EVENT_STATUS.PENDING) return event.status;
 
         const { outcome, journalTransactionId } = await this.registry.get(event.kind).handle(event.payload, tx);
-        const status = STATUS_BY_OUTCOME[outcome];
+        const status = INBOX_STATUS_BY_OUTCOME[outcome];
 
         await this.inboxEventRepository.markOutcome(event, status, { journalTransactionId }, tx);
 
@@ -54,12 +43,10 @@ export class InboxProcessor {
     }
   }
 
-  /** After something was applied, parked events may have become applicable: retry them now, ignoring their schedule. */
   drainParked(limit = 100): Promise<InboxProcessSummary> {
     return this.drain(() => this.inboxEventRepository.findPending(limit));
   }
 
-  /** For the periodic worker: only events whose retry time has come. */
   processDue(limit = 100): Promise<InboxProcessSummary> {
     return this.drain(() => this.inboxEventRepository.findPending(limit, new Date()));
   }
@@ -113,7 +100,6 @@ export class InboxProcessor {
       } else if (event.attempts + 1 >= MESSAGING_LIMITS.INBOX_MAX_ATTEMPTS) {
         await this.inboxEventRepository.markOutcome(event, INBOX_EVENT_STATUS.ERROR, { error: `Retries exhausted. ${message}` }, tx);
       } else {
-        // Anything else (deadlock, lost connection, ...) is transient: the event is idempotent, so retrying is safe.
         await this.inboxEventRepository.scheduleRetry(event, message, tx);
       }
 

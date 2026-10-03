@@ -7,7 +7,6 @@ import { aggregateOutcome } from '../../helpers';
 import type { InboxEventHandler } from '../../ports';
 import type { BlockchainMessagePayload, InboxHandlerOutcome } from '../../types';
 
-/** Events reported by the blockchain. Kafka key: transactionHash. */
 @singleton()
 @autoInjectable()
 export class BlockchainInboxHandler implements InboxEventHandler<BlockchainMessagePayload> {

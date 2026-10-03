@@ -111,7 +111,6 @@ async function main() {
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 1 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 2 });
   await systemTransactionHandler.handle({ ...withdraw, transactionStateId: 3 });
-  // SENT only queues the broadcast in the outbox; the relay submits it and stores the transaction hash.
   await container.resolve(OutboxRelay).runOnce();
 
   const payload: BlockchainMessagePayload = {

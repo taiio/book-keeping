@@ -1,10 +1,3 @@
-/**
- * End-to-end scenarios against a real database (run after `scripts/syncDb.ts`):
- *   A. REJECTED before SENT, and the same message replayed
- *   B. FAILED after the transaction was mined: the real fee is charged
- *   C. Out-of-order and replayed blockchain events through the inbox
- * Every scenario uses fresh account ids, so it does not depend on data left by the other flow scripts.
- */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
@@ -41,7 +34,6 @@ async function amountOf(accountId: number, assetTypeId: number, stateId: number 
   return BigInt(book?.amount ?? '0');
 }
 
-/** Credits an account through a normal confirmed deposit. */
 async function fund(blockchain: BlockchainEventHandler, account: AccountIdentity, ticker: string, quantity: string): Promise<void> {
   const payload: BlockchainMessagePayload = {
     transactionHash: randomBytes(32).toString('hex'),
@@ -55,7 +47,6 @@ async function fund(blockchain: BlockchainEventHandler, account: AccountIdentity
   await blockchain.handle({ ...payload, status: S.CONFIRMED.id });
 }
 
-/** One withdraw of 600 USDT with a 10 ETH fee estimation, paid by a separate account. */
 function scenario(user: AccountIdentity, feePayer: AccountIdentity) {
   const uuidToken = randomUUID();
   const senderToken = randomUUID();
@@ -110,7 +101,6 @@ async function main(): Promise<void> {
     return { user, feePayer, ...flow };
   };
 
-  // A. REJECTED before SENT, and a replayed REJECTED --------------------------------------------------------------
   {
     const { user, feePayer, withdraw } = await newCase();
 
@@ -132,7 +122,6 @@ async function main(): Promise<void> {
     console.log('A. rejected + replay: ok');
   }
 
-  // B. FAILED after mining: amount returned, real fee charged ------------------------------------------------------
   {
     const { user, feePayer, withdraw, chain } = await newCase();
 
@@ -150,7 +139,6 @@ async function main(): Promise<void> {
     console.log('B. failed after mining: ok');
   }
 
-  // C. Out-of-order and replayed events through the inbox ---------------------------------------------------------
   {
     const { user, feePayer, withdraw, chain } = await newCase();
     const inbox = container.resolve(InboxService);
@@ -160,7 +148,6 @@ async function main(): Promise<void> {
       await inbox.ingest(INBOX_EVENT_KIND.SYSTEM_TRANSACTION, { eventId: randomUUID(), payload: withdraw(state) });
     }
 
-    // The chain reports before the hash was stored: parked, never turned into a deposit.
     const confirming = { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) };
 
     assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, confirming), INBOX_EVENT_STATUS.PENDING);
@@ -170,7 +157,6 @@ async function main(): Promise<void> {
 
     assert.equal((await InboxEvent.findOne({ where: { eventId: confirming.eventId } }))!.status, INBOX_EVENT_STATUS.APPLIED);
 
-    // CONFIRMED, replayed three times: applied once.
     const confirmed = { eventId: randomUUID(), payload: chain(S.CONFIRMED.id, '8') };
 
     for (let i = 0; i < 3; i++) await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, confirmed);
@@ -184,7 +170,6 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.CONFIRMED.id), 92n);
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, null), 8n);
 
-    // A late CONFIRMING with another event id is a replay at the ledger level: nothing changes.
     await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) });
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
 

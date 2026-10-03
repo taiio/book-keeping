@@ -1,10 +1,11 @@
-import type { TransitionOutcome, TransitionResult } from '../types';
+import { TRANSITION_OUTCOME } from '../constants';
+import type { TransitionOutcome } from '../constants';
+import type { TransitionResult } from '../types';
 
-/** One outcome for a batch: APPLIED if anything was written, DUPLICATE if every request was a replay, else STALE. */
 export function aggregateOutcome(results: readonly TransitionResult[]): TransitionOutcome {
-  if (results.some((result) => result.outcome === 'APPLIED')) return 'APPLIED';
+  if (results.some((result) => result.outcome === TRANSITION_OUTCOME.APPLIED)) return TRANSITION_OUTCOME.APPLIED;
 
-  if (results.length > 0 && results.every((result) => result.outcome === 'DUPLICATE')) return 'DUPLICATE';
+  if (results.length > 0 && results.every((result) => result.outcome === TRANSITION_OUTCOME.DUPLICATE)) return TRANSITION_OUTCOME.DUPLICATE;
 
-  return 'STALE';
+  return TRANSITION_OUTCOME.STALE;
 }

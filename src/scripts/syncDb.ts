@@ -1,22 +1,8 @@
 import { sequelize } from '../config/database';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BookPurpose, TransactionState } from '../models';
+import type { LookupDefinition, LookupRow } from '../types';
 import { POST_SYNC_SQL } from './postSyncSql';
-
-/** Shape shared by the constant definitions that are seeded into a lookup table (book_purpose, transaction_state). */
-interface LookupDefinition {
-  readonly id: number | null;
-  readonly code: string | null;
-  readonly name: string;
-  readonly description: string;
-}
-
-type LookupRow = {
-  id: number;
-  code: string;
-  name: string;
-  description: string;
-};
 
 async function seedLookupTable(definitions: readonly LookupDefinition[], upsert: (row: LookupRow) => Promise<unknown>): Promise<void> {
   for (const { id, code, name, description } of definitions) {

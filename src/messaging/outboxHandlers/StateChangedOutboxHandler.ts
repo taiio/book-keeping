@@ -5,7 +5,6 @@ import { EVENT_PUBLISHER } from '../../ports';
 import type { IEventPublisher, OutboxEventHandler } from '../../ports';
 import type { OutboxEventView } from '../../types';
 
-/** Tells the rest of the system (Kafka) that a journal transaction changed state. */
 @singleton()
 @autoInjectable()
 export class StateChangedOutboxHandler implements OutboxEventHandler {

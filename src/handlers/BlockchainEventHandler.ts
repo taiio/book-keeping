@@ -22,7 +22,6 @@ export class BlockchainEventHandler {
     this.ledgerPipeline = ledgerPipeline!;
   }
 
-  /** Applies the event in its own DB transaction. The inbox uses `applyInTransaction` instead. */
   handle(payload: BlockchainMessagePayload): Promise<TransitionResult[]> {
     return this.unitOfWork.execute((tx) => this.applyInTransaction(payload, tx));
   }
@@ -35,14 +34,6 @@ export class BlockchainEventHandler {
     return this.ledgerPipeline.processTransition(buildBlockchainRequests(journalTransactions, payload), tx);
   }
 
-  /**
-   * Which journal transactions does this event belong to?
-   *  1. the hash is known                        -> those journal transactions;
-   *  2. unknown hash, but a sender / fee token   -> a system withdraw whose hash is not stored yet: not ready, retry;
-   *     matches a journal transaction               (never a deposit, which would credit the recipient twice);
-   *  3. otherwise, status CONFIRMING             -> a new deposit;
-   *  4. otherwise                                -> not ready (the deposit's CONFIRMING has not been seen yet).
-   */
   private async resolveJournalTransactions(payload: BlockchainMessagePayload, tx: Transaction): Promise<JournalTransaction[]> {
     const byHash = await this.ledgerPipeline.findByTransactionHash(payload.transactionHash, tx);
 

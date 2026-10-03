@@ -3,6 +3,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { JournalTransactionHistory } from '../models';
 import type { RecordJournalTransactionHistoryParams } from '../types';
+import { SORT_DIRECTION } from '../constants';
 
 @singleton()
 @autoInjectable()
@@ -24,6 +25,6 @@ export class JournalTransactionHistoryRepository {
   }
 
   async findLatest(journalTransactionId: number, tx: Transaction): Promise<JournalTransactionHistory | null> {
-    return JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', 'DESC']], transaction: tx });
+    return JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', SORT_DIRECTION.DESC]], transaction: tx });
   }
 }

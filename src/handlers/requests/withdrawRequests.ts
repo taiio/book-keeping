@@ -1,9 +1,8 @@
 import { BOOK_POSTING_PURPOSE } from '../../constants';
-import { toLegItem } from '../../helpers';
+import { isFeePaidBy, toLegItem } from '../../helpers';
 import type { JournalTransaction } from '../../models';
 import type { LedgerLeg, TransitionRequest, Withdraw } from '../../types';
 
-/** One request per sender journal transaction, plus one for the fee journal transaction when the payer is not a sender. */
 export function buildWithdrawRequests(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest[] {
   const requests = senderRequests(withdraw, senders);
   const fee = feeRequest(withdraw, senders);
@@ -25,7 +24,7 @@ function senderRequests(withdraw: Withdraw, senders: JournalTransaction[]): Tran
   return withdraw.sender.map((sender) => {
     const legs: LedgerLeg[] = [{ item: toLegItem(sender.account!, sender.assetTicker), amount: sender.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT }];
 
-    if (withdraw.fee.idempotencyToken === sender.idempotencyToken) {
+    if (isFeePaidBy(withdraw.fee, sender)) {
       legs.push({ item: toLegItem(withdraw.fee.account, withdraw.fee.assetTicker), amount: withdraw.fee.quantity, purpose: BOOK_POSTING_PURPOSE.FEE });
     }
 
@@ -36,7 +35,7 @@ function senderRequests(withdraw: Withdraw, senders: JournalTransaction[]): Tran
 function feeRequest(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest | null {
   const { fee } = withdraw;
 
-  if (withdraw.sender.some((sender) => sender.idempotencyToken === fee.idempotencyToken)) return null;
+  if (withdraw.sender.some((sender) => isFeePaidBy(fee, sender))) return null;
 
   return {
     journalTransaction: findByToken(senders, fee.idempotencyToken, 'Fee'),

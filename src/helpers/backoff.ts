@@ -1,6 +1,5 @@
 import { MESSAGING_LIMITS } from '../constants';
 
-/** Exponential backoff: 0.5s, 1s, 2s ... capped. `attempts` is the number of attempts already made (>= 1). */
 export function backoffMs(attempts: number): number {
   const delay = MESSAGING_LIMITS.BACKOFF_BASE_MS * 2 ** Math.max(0, attempts - 1);
 

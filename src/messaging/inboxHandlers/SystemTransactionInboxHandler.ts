@@ -6,7 +6,6 @@ import { SystemTransactionHandler } from '../../handlers/SystemTransactionHandle
 import type { InboxEventHandler } from '../../ports';
 import type { InboxHandlerOutcome, Withdraw } from '../../types';
 
-/** Messages the system itself sends (withdraw, ...). Kafka key: uuidToken. */
 @singleton()
 @autoInjectable()
 export class SystemTransactionInboxHandler implements InboxEventHandler<Withdraw> {

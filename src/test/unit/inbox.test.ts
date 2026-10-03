@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
 import { IdempotencyConflictError, InvalidTransitionError, TransactionHashConflictError } from '../../common/errors';
-import { INBOX_EVENT_KIND, INBOX_EVENT_STATUS, MESSAGING_LIMITS } from '../../constants';
+import { INBOX_EVENT_KIND, INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../constants';
 import { InboxProcessor } from '../../messaging/InboxProcessor';
 import { InboxService } from '../../messaging/InboxService';
 import { FakeInboxRepository, FakeLedger, FakeUnitOfWork } from './messagingFakes';
@@ -45,8 +45,8 @@ describe('InboxService replay handling', () => {
   });
 
   it('records a replay of the ledger as DUPLICATE and an already-passed state as STALE', async () => {
-    assert.equal(await ingest('d1', { outcome: 'DUPLICATE' }), S.DUPLICATE);
-    assert.equal(await ingest('s1', { outcome: 'STALE' }), S.STALE);
+    assert.equal(await ingest('d1', { outcome: TRANSITION_OUTCOME.DUPLICATE }), S.DUPLICATE);
+    assert.equal(await ingest('s1', { outcome: TRANSITION_OUTCOME.STALE }), S.STALE);
   });
 
   it('rejects a missing or oversized event id', async () => {

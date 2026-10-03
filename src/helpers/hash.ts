@@ -1,6 +1,5 @@
 import { createHash } from 'crypto';
 
-/** JSON with object keys sorted, so the same content always serializes identically. */
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
 

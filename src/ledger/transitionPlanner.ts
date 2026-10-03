@@ -1,19 +1,14 @@
 import { AmountMismatchError, FeeExceedsEstimationError, InvalidTransitionError } from '../common/errors';
-import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
+import { BOOK_POSTING_PURPOSE, ENTRY_STATES, TRANSACTION_STATE } from '../constants';
 import { custodyBook, externalBook, isExternalBook, sameBookRef, sameLegItem } from '../helpers';
 import type { Holding, LedgerLeg, PlanInput, PlannedPosting } from '../types';
 import { holdingBookAt, LEDGER_MOVEMENTS, originOf } from './ledgerMovements';
-import { ENTRY_STATES, isExceptionState } from './transitions';
+import { isExceptionState } from './transitionRules';
 
-/**
- * Turns a state change into the double-entry pairs to post. Pure: everything it needs (what the journal
- * transaction already holds, what the event reports) is passed in, so it is unit-testable without a database.
- */
 export function planTransition(input: PlanInput): PlannedPosting[] {
   return isExceptionState(input.targetStateId) ? planClosure(input) : planForward(input);
 }
 
-/** Applies planned postings to a holdings snapshot (used to plan several consecutive steps in memory). */
 export function applyPlanToHoldings(holdings: readonly Holding[], planned: readonly PlannedPosting[]): Holding[] {
   const next = holdings.map((holding) => ({ ...holding }));
 
@@ -69,12 +64,6 @@ function planForward(input: PlanInput): PlannedPosting[] {
   return planned;
 }
 
-/**
- * The amount reported by an event must agree with what the journal transaction holds:
- *  - AMOUNT must be equal;
- *  - FEE may be lower (the estimation reserved earlier is moved as a whole; the surplus is settled at the end).
- * Returns the amount actually held, which is the amount to move.
- */
 function checkAgainstHeld(journalTransactionId: number, leg: LedgerLeg, requested: bigint, held: Holding | undefined): bigint {
   if (!held) throw new AmountMismatchError(journalTransactionId, leg.purpose, 0n, requested);
 
@@ -89,7 +78,6 @@ function checkAgainstHeld(journalTransactionId: number, leg: LedgerLeg, requeste
   return held.amount;
 }
 
-/** Final settlement of a fee: the real fee goes out, the unspent part of the estimation goes back to CONFIRMED. */
 function settleFee(leg: LedgerLeg, from: PlannedPosting['from'], to: PlannedPosting['to'], reserved: bigint, real: bigint): PlannedPosting[] {
   const planned: PlannedPosting[] = [];
   const surplus = reserved - real;
@@ -101,18 +89,12 @@ function settleFee(leg: LedgerLeg, from: PlannedPosting['from'], to: PlannedPost
   return planned;
 }
 
-/**
- * REJECTED / FAILED: pair-reverse what the transaction holds in the book of its current state back to where it
- * started. Derived from the postings themselves, so it needs no per-type table and works for every type that has
- * a forward movement. When a mined transaction fails, the real fee is then charged to the fee payer.
- */
 function planClosure(input: PlanInput): PlannedPosting[] {
   const { journalTransactionId, transactionTypeId, currentStateId, holdings, consumedFee } = input;
 
   const origin = originOf(transactionTypeId);
   const heldIn = currentStateId === null ? undefined : holdingBookAt(transactionTypeId, currentStateId);
 
-  // Nothing was ever posted (e.g. the recipient side of an internal withdraw): only the state changes.
   if (!origin || !heldIn) return [];
 
   const toReverse = holdings.filter((holding) => sameBookRef(holding.ref, heldIn) && holding.amount > 0n).sort(compareHoldings);
@@ -134,7 +116,6 @@ function planClosure(input: PlanInput): PlannedPosting[] {
   return planned;
 }
 
-/** Deterministic order: the posting index is part of the idempotency token. */
 function compareHoldings(a: Holding, b: Holding): number {
   return a.purpose - b.purpose || a.item.accountId - b.item.accountId || a.item.assetTypeId - b.item.assetTypeId || a.item.walletTypeId - b.item.walletTypeId;
 }

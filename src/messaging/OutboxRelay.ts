@@ -1,23 +1,13 @@
 import { autoInjectable, singleton } from 'tsyringe';
 
-import { isRetryable } from '../common/errors';
+import { LedgerError } from '../common/errors';
 import { UnitOfWork } from '../common/UnitOfWork';
 import { OutboxEventRepository } from '../repositories/OutboxEventRepository';
-import type { OutboxEventView } from '../types';
+import type { OutboxEventView, OutboxRelaySummary } from '../types';
 import { OutboxHandlerRegistry } from './OutboxHandlerRegistry';
-
-export interface OutboxRelaySummary {
-  claimed: number;
-  published: number;
-  failed: number;
-}
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? `${error.name}: ${error.message}` : String(error));
 
-/**
- * Delivers outbox events at least once. An event is leased in a short transaction, handled OUTSIDE any database
- * transaction (it calls the network), then marked published (or rescheduled) in another short transaction.
- */
 @singleton()
 @autoInjectable()
 export class OutboxRelay {
@@ -43,16 +33,11 @@ export class OutboxRelay {
         await this.unitOfWork.execute((tx) => this.outboxEventRepository.markPublished(event.id, tx));
         summary.published += 1;
       } catch (error) {
-        await this.unitOfWork.execute((tx) => this.outboxEventRepository.recordFailure(event.id, errorMessage(error), isRetryable(error) || !isLedgerError(error), tx));
+        await this.unitOfWork.execute((tx) => this.outboxEventRepository.recordFailure(event.id, errorMessage(error), !(error instanceof LedgerError) || error.retryable, tx));
         summary.failed += 1;
       }
     }
 
     return summary;
   }
-}
-
-/** Unknown errors (network, timeouts) are treated as transient; only ledger errors can declare themselves final. */
-function isLedgerError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'disposition' in error;
 }

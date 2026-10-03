@@ -1,8 +1,6 @@
-import type { InboxEventKindId, OutboxEventTypeId } from '../constants';
+import type { InboxEventKindId, OutboxEventTypeId, TransitionOutcome } from '../constants';
 import type { InboxEvent, OutboxEvent } from '../models';
-import type { TransitionOutcome } from './ledger';
 
-/** What a producer hands to the consumer: the producer-set event id plus the business payload. */
 export interface InboxEnvelope<TPayload> {
   eventId: string;
   source?: string;
@@ -21,9 +19,7 @@ export interface ReceiveInboxEventParams {
 
 export interface ReceiveInboxEventResult {
   event: InboxEvent;
-  /** False when the event id had been received before (a replay). */
   created: boolean;
-  /** True when the event id came back with a different payload. */
   conflict: boolean;
 }
 
@@ -52,7 +48,6 @@ export interface EnqueueOutboxEventParams {
   payload: unknown;
 }
 
-/** The business content of a STATE_CHANGED outbox event. */
 export interface StateChangedPayload {
   journalTransactionId: number;
   idempotencyToken: string;
@@ -62,9 +57,13 @@ export interface StateChangedPayload {
   journalTransactionState: number;
   transactionHash: string | null;
   attempt: number;
-  /** True when the state was applied on behalf of an event that never arrived. */
   synthetic: boolean;
 }
 
 export type OutboxEventView = Pick<OutboxEvent, 'id' | 'aggregate' | 'eventType' | 'stateId' | 'attempt' | 'payload'>;
 
+export interface OutboxRelaySummary {
+  claimed: number;
+  published: number;
+  failed: number;
+}

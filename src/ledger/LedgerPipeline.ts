@@ -2,8 +2,9 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { TransitionNotReadyError } from '../common/errors';
-import { HISTORY_EVENT_TYPE, OUTBOX_EVENT_TYPE } from '../constants';
-import { bookKeyString, bookParamsForRef, bookPostingIdempotencyToken, DEFAULT_ATTEMPT, negateQuantity } from '../helpers';
+import { FEE_CONSUMING_STATES, HISTORY_EVENT_TYPE, OUTBOX_EVENT_TYPE, POSTING_TOKEN, TRANSITION_DECISION, TRANSITION_OUTCOME } from '../constants';
+import type { TransitionOutcome } from '../constants';
+import { bookKeyString, bookParamsForRef, bookPostingIdempotencyToken, negateQuantity } from '../helpers';
 import type { Book, JournalTransaction } from '../models';
 import { BookRepository } from '../repositories/BookRepository';
 import { BookPostingRepository } from '../repositories/BookPostingRepository';
@@ -18,18 +19,11 @@ import type {
   StateChangedPayload,
   TransitionRequest,
   TransitionResult,
+  TransitionStep,
 } from '../types';
 import { LedgerStateMachine } from './LedgerStateMachine';
 import { applyPlanToHoldings, planTransition } from './transitionPlanner';
-import { FEE_CONSUMING_STATES, isExceptionState, journalStateForTarget } from './transitions';
-
-/** One state change to write: the journal transaction, the state it reaches and the postings that go with it. */
-interface Step {
-  journalTransaction: JournalTransaction;
-  targetStateId: number;
-  synthetic: boolean;
-  planned: PlannedPosting[];
-}
+import { isExceptionState, journalStateForTarget } from './transitionRules';
 
 @singleton()
 @autoInjectable()
@@ -82,23 +76,15 @@ export class LedgerPipeline {
     return latest?.transactionStateId ?? null;
   }
 
-  /** Records the hash on every journal transaction of the blockchain transaction. Write-once per journal transaction. */
   async attachTransactionHash(journalTransactionIds: number[], transactionHash: string, tx: Transaction): Promise<void> {
     for (const journalTransactionId of [...journalTransactionIds].sort((a, b) => a - b)) {
       await this.journalTransactionRepository.setTransactionHashOnce(journalTransactionId, transactionHash, tx);
     }
   }
 
-  /**
-   * Applies a batch of state changes atomically (the caller owns the DB transaction):
-   *  1. lock the journal transactions (ascending id) and decide what each request means;
-   *  2. plan the postings (pure);
-   *  3. resolve and lock every book of the batch once, in ascending id order, so concurrent batches cannot deadlock;
-   *  4. write state, history and postings.
-   */
   async processTransition(requests: TransitionRequest[], tx: Transaction): Promise<TransitionResult[]> {
     const locked = await this.lockJournalTransactions(requests, tx);
-    const steps: Step[] = [];
+    const steps: TransitionStep[] = [];
     const results: TransitionResult[] = [];
 
     for (const request of requests) {
@@ -130,9 +116,9 @@ export class LedgerPipeline {
   private async planRequest(
     request: TransitionRequest,
     journalTransaction: JournalTransaction,
-    steps: Step[],
+    steps: TransitionStep[],
     tx: Transaction,
-  ): Promise<TransitionResult['outcome']> {
+  ): Promise<TransitionOutcome> {
     const currentStateId = await this.getCurrentStateId(journalTransaction.id, tx);
 
     const decision = this.stateMachine.evaluate({
@@ -143,11 +129,11 @@ export class LedgerPipeline {
       journalTransactionState: journalTransaction.journalTransactionState,
     });
 
-    if (decision.kind === 'DUPLICATE') return 'DUPLICATE';
-    if (decision.kind === 'STALE') return 'STALE';
-    if (decision.kind === 'EARLY') throw new TransitionNotReadyError(journalTransaction.id, currentStateId, request.targetStateId);
+    if (decision.kind === TRANSITION_DECISION.DUPLICATE) return TRANSITION_OUTCOME.DUPLICATE;
+    if (decision.kind === TRANSITION_DECISION.STALE) return TRANSITION_OUTCOME.STALE;
+    if (decision.kind === TRANSITION_DECISION.EARLY) throw new TransitionNotReadyError(journalTransaction.id, currentStateId, request.targetStateId);
 
-    const via = decision.kind === 'CATCH_UP' ? decision.via : [];
+    const via = decision.kind === TRANSITION_DECISION.CATCH_UP ? decision.via : [];
     let holdings = await this.bookPostingRepository.findHoldings(journalTransaction.id, tx);
     let stateId = currentStateId;
 
@@ -168,10 +154,10 @@ export class LedgerPipeline {
       stateId = targetStateId;
     }
 
-    return 'APPLIED';
+    return TRANSITION_OUTCOME.APPLIED
   }
 
-  private async writeSteps(steps: Step[], tx: Transaction): Promise<void> {
+  private async writeSteps(steps: TransitionStep[], tx: Transaction): Promise<void> {
     if (steps.length === 0) return;
 
     const books = await this.resolveBooks(steps, tx);
@@ -183,19 +169,19 @@ export class LedgerPipeline {
     for (const step of steps) {
       await this.recordState(step, tx);
 
-      let index = 1;
+      let index: number = POSTING_TOKEN.FIRST_INDEX;
 
       for (const planned of step.planned) {
         const from = lockedBooks.get(this.bookOf(books, planned.item, planned.from).id)!;
         const to = lockedBooks.get(this.bookOf(books, planned.item, planned.to).id)!;
 
         await this.postDoubleEntry(step, planned, from, to, index, tx);
-        index += 2;
+        index += POSTING_TOKEN.POSTINGS_PER_ENTRY;
       }
     }
   }
 
-  private async resolveBooks(steps: Step[], tx: Transaction): Promise<Map<string, Book>> {
+  private async resolveBooks(steps: TransitionStep[], tx: Transaction): Promise<Map<string, Book>> {
     const books = new Map<string, Book>();
 
     for (const step of steps) {
@@ -216,7 +202,7 @@ export class LedgerPipeline {
     return books.get(bookKeyString(bookParamsForRef(item, ref)))!;
   }
 
-  private async recordState(step: Step, tx: Transaction): Promise<void> {
+  private async recordState(step: TransitionStep, tx: Transaction): Promise<void> {
     const { journalTransaction, targetStateId, synthetic } = step;
     const journalState = journalStateForTarget(targetStateId);
 
@@ -239,17 +225,17 @@ export class LedgerPipeline {
       transactionStateId: targetStateId,
       journalTransactionState: journalTransaction.journalTransactionState,
       transactionHash: journalTransaction.transactionHash,
-      attempt: DEFAULT_ATTEMPT,
+      attempt: POSTING_TOKEN.FIRST_ATTEMPT,
       synthetic,
     };
 
     await this.outboxEventRepository.enqueue(
-      { aggregate: journalTransaction.idempotencyToken, eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED, stateId: targetStateId, attempt: DEFAULT_ATTEMPT, payload },
+      { aggregate: journalTransaction.idempotencyToken, eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED, stateId: targetStateId, attempt: POSTING_TOKEN.FIRST_ATTEMPT, payload },
       tx,
     );
   }
 
-  private async postDoubleEntry(step: Step, planned: PlannedPosting, from: Book, to: Book, firstIndex: number, tx: Transaction): Promise<void> {
+  private async postDoubleEntry(step: TransitionStep, planned: PlannedPosting, from: Book, to: Book, firstIndex: number, tx: Transaction): Promise<void> {
     const { journalTransaction, targetStateId } = step;
 
     const common = {
@@ -264,7 +250,7 @@ export class LedgerPipeline {
         journalIdempotencyToken: journalTransaction.idempotencyToken,
         transactionTypeId: journalTransaction.transactionTypeId,
         transactionStateId: targetStateId,
-        attempt: DEFAULT_ATTEMPT,
+        attempt: POSTING_TOKEN.FIRST_ATTEMPT,
         index,
       });
 
@@ -273,7 +259,7 @@ export class LedgerPipeline {
       tx,
     );
     await this.bookPostingRepository.createBookPosting(
-      { ...common, bookId: to.id, amount: planned.amount, idempotencyToken: token(firstIndex + 1), lockedBook: to },
+      { ...common, bookId: to.id, amount: planned.amount, idempotencyToken: token(firstIndex + POSTING_TOKEN.FIRST_INDEX), lockedBook: to },
       tx,
     );
   }

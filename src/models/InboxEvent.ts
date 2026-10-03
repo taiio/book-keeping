@@ -19,7 +19,6 @@ export class InboxEvent extends Model {
   @Column({ type: DataType.BIGINT, allowNull: false })
   declare id: string;
 
-  /** Unique id set by the producer. The deduplication key of the whole message. */
   @Column({ field: 'event_id', type: DataType.STRING(64), allowNull: false })
   declare eventId: string;
 
@@ -29,7 +28,6 @@ export class InboxEvent extends Model {
   @Column({ type: DataType.STRING(64), allowNull: true })
   declare source: string | null;
 
-  /** uuidToken for system messages, transactionHash for blockchain events (the Kafka message key). */
   @Column({ field: 'ordering_key', type: DataType.STRING(255), allowNull: false })
   declare orderingKey: string;
 
@@ -45,7 +43,6 @@ export class InboxEvent extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare status: InboxEventStatusId;
 
-  /** How many times this event id was delivered. `deliveryCount - 1` is the number of replays. */
   @Column({ field: 'delivery_count', type: DataType.INTEGER, allowNull: false, defaultValue: 1 })
   declare deliveryCount: number;
 

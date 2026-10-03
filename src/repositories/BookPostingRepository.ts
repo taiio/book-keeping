@@ -18,10 +18,6 @@ export class BookPostingRepository {
     this.bookRepository = bookRepository!;
   }
 
-  /**
-   * Writes one posting, idempotently by token. Re-sending the same token with the same content is a no-op;
-   * re-sending it with different content is a conflict (it would otherwise be silently swallowed).
-   */
   async createBookPosting(params: CreateBookPostingParams, tx: Transaction): Promise<BookPosting> {
     const lockedBook = params.lockedBook ?? (await this.bookRepository.lockBookById(params.bookId, tx));
     const nextSequenceNo = Number(lockedBook.lastSequenceNo) + 1;
@@ -62,10 +58,6 @@ export class BookPostingRepository {
     return posting;
   }
 
-  /**
-   * What a journal transaction currently holds, per book and purpose (sum of its postings on that book).
-   * Only non-zero holdings are returned.
-   */
   async findHoldings(journalTransactionId: number, tx: Transaction): Promise<Holding[]> {
     const postings = await BookPosting.findAll({
       where: { journalTransactionId },

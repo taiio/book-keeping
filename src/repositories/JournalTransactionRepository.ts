@@ -2,7 +2,7 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { NotFoundError, TransactionHashConflictError } from '../common/errors';
-import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE } from '../constants';
+import { HISTORY_EVENT_TYPE, JOURNAL_TRANSACTION_STATE, SORT_DIRECTION } from '../constants';
 import type { JournalTransactionStateId } from '../constants';
 import { JournalTransaction } from '../models';
 import type { GetOrCreateJournalTransactionParams, GetOrCreateJournalTransactionResult } from '../types';
@@ -22,20 +22,19 @@ export class JournalTransactionRepository {
   }
 
   async findAllByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction[]> {
-    return JournalTransaction.findAll({ where: { transactionHash }, order: [['id', 'ASC']], transaction: tx });
+    return JournalTransaction.findAll({ where: { transactionHash }, order: [['id', SORT_DIRECTION.ASC]], transaction: tx });
   }
 
   async findAllByUuidToken(uuidToken: string, tx: Transaction): Promise<JournalTransaction[]> {
-    return JournalTransaction.findAll({ where: { uuidToken }, order: [['id', 'ASC']], transaction: tx });
+    return JournalTransaction.findAll({ where: { uuidToken }, order: [['id', SORT_DIRECTION.ASC]], transaction: tx });
   }
 
   async findAllByIdempotencyTokens(idempotencyTokens: string[], tx: Transaction): Promise<JournalTransaction[]> {
     if (idempotencyTokens.length === 0) return [];
 
-    return JournalTransaction.findAll({ where: { idempotencyToken: idempotencyTokens }, order: [['id', 'ASC']], transaction: tx });
+    return JournalTransaction.findAll({ where: { idempotencyToken: idempotencyTokens }, order: [['id', SORT_DIRECTION.ASC]], transaction: tx });
   }
 
-  /** Locks the row; every state change of a journal transaction starts here so concurrent workers serialize. */
   async lockById(id: number, tx: Transaction): Promise<JournalTransaction> {
     const journalTransaction = await JournalTransaction.findByPk(id, { transaction: tx, lock: tx.LOCK.UPDATE });
 
@@ -51,7 +50,6 @@ export class JournalTransactionRepository {
     await journalTransaction.save({ transaction: tx });
   }
 
-  /** The transaction hash is write-once: NULL -> value is allowed, the same value is a no-op, another value is a conflict. */
   async setTransactionHashOnce(journalTransactionId: number, transactionHash: string, tx: Transaction): Promise<void> {
     const journalTransaction = await this.lockById(journalTransactionId, tx);
 

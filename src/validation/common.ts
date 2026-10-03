@@ -1,14 +1,11 @@
 import { ValidationError } from '../common/errors';
+import { VALIDATION_PATTERN } from '../constants';
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const POSITIVE_INTEGER_PATTERN = /^[1-9]\d*$/;
-const NON_NEGATIVE_INTEGER_PATTERN = /^(0|[1-9]\d*)$/;
+export const isUuid = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.UUID.test(value);
 
-export const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID_PATTERN.test(value);
+export const isPositiveIntegerString = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.POSITIVE_INTEGER.test(value);
 
-export const isPositiveIntegerString = (value: unknown): value is string => typeof value === 'string' && POSITIVE_INTEGER_PATTERN.test(value);
-
-export const isNonNegativeIntegerString = (value: unknown): value is string => typeof value === 'string' && NON_NEGATIVE_INTEGER_PATTERN.test(value);
+export const isNonNegativeIntegerString = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.NON_NEGATIVE_INTEGER.test(value);
 
 export function assertUuid(value: unknown, label: string): asserts value is string {
   if (!isUuid(value)) throw new ValidationError(`${label} must be a uuid: ${String(value)}`);

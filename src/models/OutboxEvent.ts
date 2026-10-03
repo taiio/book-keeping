@@ -17,7 +17,6 @@ export class OutboxEvent extends Model {
   @Column({ type: DataType.BIGINT, allowNull: false })
   declare id: string;
 
-  /** What the event is about: the idempotency token of a journal transaction, or the uuidToken of a withdraw. */
   @Column({ type: DataType.STRING(64), allowNull: false })
   declare aggregate: string;
 
@@ -36,7 +35,6 @@ export class OutboxEvent extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false })
   declare status: OutboxEventStatusId;
 
-  /** Delivery attempts made by the relay. */
   @Column({ type: DataType.INTEGER, allowNull: false, defaultValue: 0 })
   declare attempts: number;
 

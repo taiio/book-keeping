@@ -1,6 +1,14 @@
 import type { Book } from '../models';
 import type { CreatedByParams } from './common';
 
+export interface PostingTokenParts {
+  journalIdempotencyToken: string;
+  transactionTypeId: number;
+  transactionStateId: number;
+  attempt: number;
+  index: number;
+}
+
 export interface CreateBookPostingParams extends CreatedByParams {
   bookId: number;
   journalTransactionId: number;
@@ -12,6 +20,5 @@ export interface CreateBookPostingParams extends CreatedByParams {
 
   idempotencyToken: string;
 
-  /** A book already locked by the caller; avoids locking (and re-reading) it again. */
   lockedBook?: Book;
 }

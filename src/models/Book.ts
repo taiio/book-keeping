@@ -8,9 +8,6 @@ import { BookHistory } from './BookHistory';
 @Table({
   tableName: 'book',
   timestamps: false,
-
-  // The unique key (client, account, asset type, wallet type, purpose, state) is created by `scripts/postSyncSql.ts`
-  // with NULLS NOT DISTINCT, so the single external book of an account (state NULL) cannot be duplicated.
 })
 export class Book extends Model {
   @PrimaryKey

@@ -1,24 +1,9 @@
-import { INBOX_EVENT_STATUS, MESSAGING_LIMITS } from '../../constants';
+import { INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../constants';
 import type { InboxEventKindId, InboxEventStatusId } from '../../constants';
+import type { FakeEvent } from './types';
 import { nextAttemptAfter } from '../../helpers';
 import type { InboxHandlerOutcome, InboxOutcomeDetail, ReceiveInboxEventParams } from '../../types';
 
-export interface FakeEvent {
-  id: string;
-  eventId: string;
-  kind: InboxEventKindId;
-  payload: any;
-  payloadHash: string;
-  status: InboxEventStatusId;
-  deliveryCount: number;
-  attempts: number;
-  journalTransactionId: number | null;
-  lastError: string | null;
-  firstReceivedAt: Date;
-  nextAttemptAt: Date;
-}
-
-/** In-memory stand-in for InboxEventRepository with the same observable behavior. */
 export class FakeInboxRepository {
   readonly events: FakeEvent[] = [];
 
@@ -83,7 +68,6 @@ export class FakeUnitOfWork {
   }
 }
 
-/** A tiny ledger: an event is applicable once the event it `needs` was applied. */
 export class FakeLedger {
   readonly applied = new Set<string>();
   calls = 0;
@@ -98,13 +82,13 @@ export class FakeLedger {
       if (payload.fail) throw payload.fail;
 
       if (payload.needs && !this.applied.has(payload.needs)) {
-        const { TransitionNotReadyError } = await import('../../common/errors');
+        const { TransitionNotReadyError } = await import('../../common/errors.js');
         throw new TransitionNotReadyError(payload.id, null, 1);
       }
 
       this.applied.add(payload.id);
 
-      return { outcome: payload.outcome ?? 'APPLIED', journalTransactionId: 7 };
+      return { outcome: payload.outcome ?? TRANSITION_OUTCOME.APPLIED, journalTransactionId: 7 };
     },
   };
 

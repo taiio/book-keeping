@@ -6,7 +6,6 @@ import type { InboxEventHandler } from '../ports';
 import { BlockchainInboxHandler } from './inboxHandlers/BlockchainInboxHandler';
 import { SystemTransactionInboxHandler } from './inboxHandlers/SystemTransactionInboxHandler';
 
-/** Finds the handler of a message kind. Add a new kind by adding its handler here. */
 @singleton()
 @autoInjectable()
 export class InboxHandlerRegistry {

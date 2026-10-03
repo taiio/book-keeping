@@ -1,23 +1,16 @@
 import { InvalidTransitionError } from '../common/errors';
-import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE_RANK } from '../constants';
-import { CATCH_UP_PATHS, ENTRY_STATES, EXCEPTION_SOURCES, FORWARD_TRANSITIONS, isExceptionState } from './transitions';
+import {
+  CATCH_UP_PATHS,
+  ENTRY_STATES,
+  EXCEPTION_SOURCES,
+  FORWARD_TRANSITIONS,
+  JOURNAL_TRANSACTION_STATE,
+  TRANSACTION_STATE_RANK,
+  TRANSITION_DECISION,
+} from '../constants';
+import type { EvaluateParams, TransitionDecision } from '../types';
+import { isExceptionState } from './transitionRules';
 
-export type TransitionDecision =
-  | { kind: 'APPLY' }
-  | { kind: 'CATCH_UP'; via: readonly number[] }
-  | { kind: 'DUPLICATE' }
-  | { kind: 'STALE' }
-  | { kind: 'EARLY' };
-
-export interface EvaluateParams {
-  transactionTypeId: number;
-  currentStateId: number | null;
-  targetStateId: number;
-  journalTransactionId: number;
-  journalTransactionState: number;
-}
-
-/** Decides what a requested state change means for a journal transaction. Pure: no I/O. */
 export class LedgerStateMachine {
   evaluate(params: EvaluateParams): TransitionDecision {
     const { transactionTypeId, currentStateId, targetStateId, journalTransactionId, journalTransactionState } = params;
@@ -26,14 +19,13 @@ export class LedgerStateMachine {
 
     if (ENTRY_STATES[transactionTypeId] === undefined) throw invalid();
 
-    if (currentStateId === targetStateId) return { kind: 'DUPLICATE' };
+    if (currentStateId === targetStateId) return { kind: TRANSITION_DECISION.DUPLICATE };
 
     if (this.isLegal(transactionTypeId, currentStateId, targetStateId)) {
       if (journalTransactionState !== JOURNAL_TRANSACTION_STATE.ACTIVE) throw invalid();
-      return { kind: 'APPLY' };
+      return { kind: TRANSITION_DECISION.APPLY };
     }
 
-    // Already closed (REJECTED / FAILED): nothing else may happen to it.
     if (currentStateId !== null && TRANSACTION_STATE_RANK[currentStateId] === undefined) throw invalid();
 
     const currentRank = currentStateId === null ? -1 : TRANSACTION_STATE_RANK[currentStateId];
@@ -44,11 +36,11 @@ export class LedgerStateMachine {
 
     if (targetRank === undefined) throw invalid();
 
-    if (targetRank < currentRank) return { kind: 'STALE' };
+    if (targetRank < currentRank) return { kind: TRANSITION_DECISION.STALE };
 
     const via = currentStateId === null ? undefined : CATCH_UP_PATHS[transactionTypeId]?.[currentStateId]?.[targetStateId];
 
-    return via ? { kind: 'CATCH_UP', via } : { kind: 'EARLY' };
+    return via ? { kind: TRANSITION_DECISION.CATCH_UP, via } : { kind: TRANSITION_DECISION.EARLY };
   }
 
   private isLegal(transactionTypeId: number, currentStateId: number | null, targetStateId: number): boolean {
@@ -59,7 +51,6 @@ export class LedgerStateMachine {
     return (EXCEPTION_SOURCES[transactionTypeId]?.[targetStateId] ?? []).includes(currentStateId);
   }
 
-  /** Too early (a source state has not been reached yet) is retryable; too late (already past every source) is not. */
   private evaluateException(transactionTypeId: number, targetStateId: number, currentRank: number, invalid: () => Error): TransitionDecision {
     const sourceRanks = (EXCEPTION_SOURCES[transactionTypeId]?.[targetStateId] ?? [])
       .filter((source): source is number => source !== null)
@@ -69,7 +60,7 @@ export class LedgerStateMachine {
 
     if (currentRank > Math.max(...sourceRanks)) throw invalid();
 
-    if (currentRank < Math.min(...sourceRanks)) return { kind: 'EARLY' };
+    if (currentRank < Math.min(...sourceRanks)) return { kind: TRANSITION_DECISION.EARLY };
 
     throw invalid();
   }

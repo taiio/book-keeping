@@ -1,9 +1,6 @@
 import type { ValueOf } from '../types/common';
 
 export const TRANSACTION_STATE = {
-  /**
-   * Supports the EXTERNAL blockchain book, which has no detailed transaction state.
-   */
   NOT_APPLICABLE: {
     id: null,
     code: null,
@@ -11,7 +8,6 @@ export const TRANSACTION_STATE = {
     description: 'No transaction state applies to this record.',
   },
 
-  // Happy-path states
   AUTHORIZING: {
     id: 1,
     code: 'AUTHORIZING',
@@ -47,7 +43,6 @@ export const TRANSACTION_STATE = {
     description: 'The transaction has received sufficient blockchain confirmations.',
   },
 
-  // Terminal / exception states
   REJECTED: {
     id: 90,
     code: 'REJECTED',

@@ -3,7 +3,7 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { NotFoundError } from '../common/errors';
-import { MESSAGING_LIMITS, OUTBOX_EVENT_STATUS } from '../constants';
+import { MESSAGING_LIMITS, OUTBOX_EVENT_STATUS, SORT_DIRECTION } from '../constants';
 import { nextAttemptAfter } from '../helpers';
 import { OutboxEvent } from '../models';
 import type { EnqueueOutboxEventParams } from '../types';
@@ -11,7 +11,6 @@ import type { EnqueueOutboxEventParams } from '../types';
 @singleton()
 @autoInjectable()
 export class OutboxEventRepository {
-  /** Idempotent by (aggregate, type, state, attempt): enqueueing the same fact twice keeps one row. */
   async enqueue(params: EnqueueOutboxEventParams, tx: Transaction): Promise<OutboxEvent> {
     const now = new Date();
 
@@ -34,14 +33,10 @@ export class OutboxEventRepository {
     return event;
   }
 
-  /**
-   * Leases a batch: rows are locked with SKIP LOCKED so relays do not fight over them, and made invisible until the
-   * lease ends. A relay that dies simply lets the lease expire and the event is delivered again.
-   */
   async claimBatch(limit: number, tx: Transaction, now: Date = new Date()): Promise<OutboxEvent[]> {
     const events = await OutboxEvent.findAll({
       where: { status: OUTBOX_EVENT_STATUS.NEW, nextAttemptAt: { [Op.lte]: now } },
-      order: [['id', 'ASC']],
+      order: [['id', SORT_DIRECTION.ASC]],
       limit,
       transaction: tx,
       lock: tx.LOCK.UPDATE,
@@ -67,7 +62,6 @@ export class OutboxEventRepository {
     await event.save({ transaction: tx });
   }
 
-  /** Non-retryable errors, and retries that ran out, end as FAILED (needs a person). Otherwise try again later. */
   async recordFailure(id: string, error: string, retryable: boolean, tx: Transaction): Promise<void> {
     const event = await this.lockById(id, tx);
 

@@ -1,0 +1,6 @@
+export const POSTING_TOKEN = {
+  FIRST_ATTEMPT: 1,
+  FIRST_INDEX: 1,
+  MAX_LENGTH: 64,
+  POSTINGS_PER_ENTRY: 2,
+} as const;

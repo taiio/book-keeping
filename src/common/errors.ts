@@ -1,9 +1,5 @@
-/**
- * How a consumer should react to a failure:
- *  - `retryable`    : transient or ordering related, safe to redeliver later (deadlock, event arrived too early).
- *  - `non_retryable`: the message itself is wrong; retrying cannot help (invalid transition, amount mismatch).
- */
-export type ErrorDisposition = 'retryable' | 'non_retryable';
+import { ERROR_DISPOSITION } from '../constants';
+import type { ErrorDisposition } from '../constants';
 
 export abstract class LedgerError extends Error {
   abstract readonly disposition: ErrorDisposition;
@@ -14,7 +10,7 @@ export abstract class LedgerError extends Error {
   }
 
   get retryable(): boolean {
-    return this.disposition === 'retryable';
+    return this.disposition === ERROR_DISPOSITION.RETRYABLE;
   }
 }
 
@@ -23,11 +19,11 @@ export function isRetryable(error: unknown): boolean {
 }
 
 export class ValidationError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 }
 
 export class UnsupportedOperationError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(message: string) {
     super(`Unsupported operation: ${message}`);
@@ -35,7 +31,7 @@ export class UnsupportedOperationError extends LedgerError {
 }
 
 export class NotFoundError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(entity: string, id: number | string) {
     super(`${entity} not found: ${id}`);
@@ -43,7 +39,7 @@ export class NotFoundError extends LedgerError {
 }
 
 export class InsufficientBalanceError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(bookId: number, currentAmount: string, delta: string) {
     super(`Insufficient book balance: book=${bookId}, current=${currentAmount}, delta=${delta}`);
@@ -51,16 +47,15 @@ export class InsufficientBalanceError extends LedgerError {
 }
 
 export class InvalidTransitionError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(journalTransactionId: number, currentStateId: number | null, targetStateId: number) {
     super(`Invalid transition: journalTransaction=${journalTransactionId}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}`);
   }
 }
 
-/** The event arrived before the state(s) it depends on. Safe to redeliver; an inbox can park it. */
 export class TransitionNotReadyError extends LedgerError {
-  readonly disposition = 'retryable';
+  readonly disposition = ERROR_DISPOSITION.RETRYABLE;
 
   constructor(journalTransactionId: number | string, currentStateId: number | null, targetStateId: number) {
     super(`Transition not ready: journalTransaction=${journalTransactionId}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}`);
@@ -68,7 +63,7 @@ export class TransitionNotReadyError extends LedgerError {
 }
 
 export class AmountMismatchError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(journalTransactionId: number, purposeId: number, expected: bigint, actual: bigint) {
     super(`Amount mismatch: journalTransaction=${journalTransactionId}, purpose=${purposeId}, held=${expected}, received=${actual}`);
@@ -76,25 +71,23 @@ export class AmountMismatchError extends LedgerError {
 }
 
 export class FeeExceedsEstimationError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(journalTransactionId: number, estimated: bigint, actual: bigint) {
     super(`Real fee exceeds estimation: journalTransaction=${journalTransactionId}, estimated=${estimated}, real=${actual}`);
   }
 }
 
-/** The same idempotency token was reused with different content. */
 export class IdempotencyConflictError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(token: string, detail: string) {
     super(`Idempotency conflict: token=${token}, ${detail}`);
   }
 }
 
-/** A transaction hash is write-once; a different hash means the payload changed. */
 export class TransactionHashConflictError extends LedgerError {
-  readonly disposition = 'non_retryable';
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
   constructor(journalTransactionId: number, existing: string, incoming: string) {
     super(`Transaction hash conflict: journalTransaction=${journalTransactionId}, existing=${existing}, incoming=${incoming}`);

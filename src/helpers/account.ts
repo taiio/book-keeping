@@ -1,8 +1,17 @@
-import type { AccountIdentity, AccountItem, InternalAccountItem, LegItem } from '../types';
+import type { AccountIdentity, AccountItem, FeePayerRef, InternalAccountItem, LegItem } from '../types';
 import type { Book } from '../models';
 
 export function isInternalItem(item: AccountItem): item is InternalAccountItem {
   return item.account !== undefined;
+}
+
+export function isFeePaidBy(fee: FeePayerRef, party: FeePayerRef): boolean {
+  return (
+    !!fee.idempotencyToken &&
+    fee.idempotencyToken === party.idempotencyToken &&
+    fee.account?.accountId !== undefined &&
+    fee.account.accountId === party.account?.accountId
+  );
 }
 
 export function toLegItem(account: AccountIdentity, assetTicker: string): LegItem {
@@ -16,7 +25,6 @@ export function toLegItem(account: AccountIdentity, assetTicker: string): LegIte
   };
 }
 
-/** Rebuilds the account/asset identity of a persisted book. */
 export function legItemFromBook(book: Book): LegItem {
   return {
     clientId: book.clientId,
@@ -28,7 +36,6 @@ export function legItemFromBook(book: Book): LegItem {
   };
 }
 
-/** Two items address the same book family when they share the fields of the book unique key. */
 export function sameLegItem(a: LegItem, b: LegItem): boolean {
   return a.clientId === b.clientId && a.accountId === b.accountId && a.assetTypeId === b.assetTypeId && a.walletTypeId === b.walletTypeId;
 }

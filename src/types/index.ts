@@ -8,3 +8,4 @@ export * from './ledger';
 export * from './transaction';
 export * from './planning';
 export * from './messaging';
+export * from './lookup';

@@ -2,7 +2,6 @@ import type { Book } from '../models';
 import type { AccountAssetIdentity } from './account';
 import type { CreatedByParams, GetOrCreateResult, HistoryRecordParams, UpdatedByParams } from './common';
 
-/** Selects a book "slot" within an account: which purpose it serves and which transaction state it holds. */
 export interface BookRef {
   bookPurposeId: number;
   transactionStateId: number | null;

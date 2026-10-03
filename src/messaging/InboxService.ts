@@ -2,7 +2,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { IdempotencyConflictError, ValidationError } from '../common/errors';
 import { UnitOfWork } from '../common/UnitOfWork';
-import { INBOX_EVENT_STATUS } from '../constants';
+import { INBOX_EVENT_STATUS, MESSAGING_LIMITS } from '../constants';
 import type { InboxEventKindId, InboxEventStatusId } from '../constants';
 import { payloadHash } from '../helpers';
 import { InboxEventRepository } from '../repositories/InboxEventRepository';
@@ -11,9 +11,6 @@ import { assertPresent } from '../validation';
 import { InboxHandlerRegistry } from './InboxHandlerRegistry';
 import { InboxProcessor } from './InboxProcessor';
 
-const MAX_EVENT_ID_LENGTH = 64;
-
-/** Entry point of the Kafka consumer: store the message once, apply it, then let parked messages catch up. */
 @singleton()
 @autoInjectable()
 export class InboxService {
@@ -29,15 +26,10 @@ export class InboxService {
     this.processor = processor!;
   }
 
-  /**
-   * Returns the status of the event after this delivery. Safe to call any number of times with the same envelope:
-   * the first delivery applies it, later ones only count (`deliveryCount`) and never write to the ledger.
-   * Ack the Kafka message when this returns; a thrown IdempotencyConflictError means the producer broke its contract.
-   */
   async ingest<TPayload>(kind: InboxEventKindId, envelope: InboxEnvelope<TPayload>): Promise<InboxEventStatusId> {
     assertPresent(envelope.eventId, 'eventId');
 
-    if (envelope.eventId.length > MAX_EVENT_ID_LENGTH) throw new ValidationError(`eventId exceeds ${MAX_EVENT_ID_LENGTH} characters`);
+    if (envelope.eventId.length > MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH) throw new ValidationError(`eventId exceeds ${MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH} characters`);
 
     const handler = this.registry.get(kind);
 

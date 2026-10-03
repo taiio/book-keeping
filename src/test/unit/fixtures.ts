@@ -16,7 +16,6 @@ export const withdrawHoldings = (stateId: number, amount = 1000n, fee = 10n): Ho
   { ref: custodyBook(stateId), item: FEE_PAYER, purpose: BOOK_POSTING_PURPOSE.FEE, amount: fee },
 ];
 
-/** Plays a withdraw forward through `through` and returns the plans and the final holdings. */
 export function playWithdraw(through: readonly number[], amount = '1000', fee = '10') {
   let holdings: Holding[] = [];
   let currentStateId: number | null = null;
@@ -42,7 +41,6 @@ export function playWithdraw(through: readonly number[], amount = '1000', fee = 
 
 export const HAPPY_PATH = [S.AUTHORIZING.id, S.AUTHORIZED.id, S.SENT.id, S.CONFIRMING.id] as const;
 
-/** Net balance per (account, state) a list of plans produces, to check the books balance. */
 export function netByBook(plans: PlannedPosting[][]): Map<string, bigint> {
   const net = new Map<string, bigint>();
   const add = (key: string, value: bigint) => net.set(key, (net.get(key) ?? 0n) + value);

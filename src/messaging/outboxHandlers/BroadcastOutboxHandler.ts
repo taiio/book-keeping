@@ -8,11 +8,6 @@ import { BLOCKCHAIN_SUBMITTER } from '../../ports';
 import type { IBlockchainSubmitter, OutboxEventHandler } from '../../ports';
 import type { OutboxEventView, Withdraw } from '../../types';
 
-/**
- * Puts a SENT withdraw on the blockchain, then records the transaction hash (write-once) on its journal transactions.
- * Delivery is at least once, so a crash between "submitted" and "marked published" submits again; the submitter is
- * required to be idempotent (same transaction, same hash), and the write-once hash makes the second pass a no-op.
- */
 @singleton()
 @autoInjectable()
 export class BroadcastOutboxHandler implements OutboxEventHandler {
