@@ -83,13 +83,6 @@ export class JournalTransaction extends Model {
   declare idempotencyToken: string;
 
   @Column({
-    field: 'source_content',
-    type: DataType.TEXT,
-    allowNull: true,
-  })
-  declare sourceContent: string | null;
-
-  @Column({
     field: 'business_post_date_time',
     type: DataType.DATE,
     allowNull: true,

@@ -74,7 +74,6 @@ export class JournalTransactionRepository {
         fromAccountId: params.fromAccountId ?? null,
         toAccountId: params.toAccountId ?? null,
         transactionHash: params.transactionHash ?? null,
-        sourceContent: params.sourceContent ?? null,
         idempotencyToken: params.idempotencyToken,
         journalTransactionState: JOURNAL_TRANSACTION_STATE.ACTIVE,
         businessPostDateTime: params.businessPostDateTime,

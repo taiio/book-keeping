@@ -9,7 +9,6 @@ export interface GetOrCreateJournalTransactionParams extends CreatedByParams {
 
   transactionStateId?: number | null;
   transactionHash?: string | null;
-  sourceContent?: string | null;
   fromAccountId?: number | null;
   toAccountId?: number | null;
   businessPostDateTime?: Date;

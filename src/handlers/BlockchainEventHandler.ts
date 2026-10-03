@@ -62,7 +62,6 @@ export class BlockchainEventHandler {
             transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
             toAccountId: recipient.account!.accountId,
             transactionHash: payload.transactionHash,
-            sourceContent: null,
           },
           tx,
         ),

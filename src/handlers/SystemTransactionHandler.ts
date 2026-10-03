@@ -89,7 +89,6 @@ export class SystemTransactionHandler {
   }
 
   private createSenderJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {
-    const sourceContent = JSON.stringify(withdraw);
     const feeBelongsToSender = withdraw.sender.some((sender) => isFeePaidBy(withdraw.fee, sender));
 
     const items = [
@@ -97,17 +96,14 @@ export class SystemTransactionHandler {
       ...(feeBelongsToSender ? [] : [{ idempotencyToken: withdraw.fee.idempotencyToken, fromAccountId: withdraw.fee.account.accountId }]),
     ];
 
-    return this.createJournalTransactions(withdraw, items.map((item) => ({ ...item, transactionTypeId: TRANSACTION_TYPE.WITHDRAW, sourceContent })), tx);
+    return this.createJournalTransactions(withdraw, items.map((item) => ({ ...item, transactionTypeId: TRANSACTION_TYPE.WITHDRAW })), tx);
   }
 
   private createRecipientJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {
-    const sourceContent = JSON.stringify(withdraw);
-
     const items = withdraw.recipient.filter(isInternalItem).map((recipient) => ({
       idempotencyToken: recipient.idempotencyToken,
       toAccountId: recipient.account.accountId,
       transactionTypeId: TRANSACTION_TYPE.DEPOSIT,
-      sourceContent,
     }));
 
     return this.createJournalTransactions(withdraw, items, tx);
