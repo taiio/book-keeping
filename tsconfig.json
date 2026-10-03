@@ -9,6 +9,7 @@
     "rootDir": ".",
 
     "strict": true,
+    "isolatedModules": true,
 
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

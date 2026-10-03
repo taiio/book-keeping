@@ -1,3 +1,4 @@
+import { TransitionNotReadyError } from '../../common/errors';
 import { INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../constants';
 import type { InboxEventKindId, InboxEventStatusId } from '../../constants';
 import type { FakeEvent } from './types';
@@ -82,7 +83,6 @@ export class FakeLedger {
       if (payload.fail) throw payload.fail;
 
       if (payload.needs && !this.applied.has(payload.needs)) {
-        const { TransitionNotReadyError } = await import('../../common/errors.js');
         throw new TransitionNotReadyError(payload.id, null, 1);
       }
 

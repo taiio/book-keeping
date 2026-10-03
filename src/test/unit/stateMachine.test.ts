@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from '@jest/globals';
 
 import { InvalidTransitionError } from '../../common/errors';
 import { JOURNAL_TRANSACTION_STATE, TRANSACTION_STATE, TRANSACTION_TYPE, TRANSITION_DECISION } from '../../constants';

@@ -7,7 +7,7 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node --transpile-only src/index.ts",
     "sync-db": "ts-node scripts/sync-db.ts",
-    "test": "jest",
+    "test:unit": "npx jest src/test/unit",
     "test:manual": "ts-node src/test/run.ts",
     "test:di": "ts-node src/test/diSanityCheck.ts",
     "format": "prettier --write .",

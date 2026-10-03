@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from '@jest/globals';
 
 import { AmountMismatchError, FeeExceedsEstimationError } from '../../common/errors';
 import { TRANSACTION_STATE, TRANSACTION_TYPE } from '../../constants';

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it } from '@jest/globals';
 
 import { InvalidTransitionError, TransitionNotReadyError } from '../../common/errors';
 import { OUTBOX_EVENT_TYPE } from '../../constants';
