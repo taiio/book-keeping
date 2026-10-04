@@ -17,7 +17,7 @@ export interface GetOrCreateJournalTransactionParams extends CreatedByParams {
 export type GetOrCreateJournalTransactionResult = GetOrCreateResult<{ journalTransaction: JournalTransaction }>;
 
 export interface UpdateJournalTransactionParams extends UpdatedByParams {
-  journalTransactionId: number;
+  journalTransactionId: string;
 
   journalTransactionState?: JournalTransactionStateId;
 }

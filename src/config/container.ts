@@ -13,6 +13,7 @@ import '../repositories/JournalTransactionHistoryRepository';
 import '../repositories/InboxEventRepository';
 import '../repositories/OutboxEventRepository';
 import '../ledger/LedgerPipeline';
+import '../ledger/ConservationVerifier';
 import '../handlers/SystemTransactionHandler';
 import '../handlers/BlockchainEventHandler';
 import '../messaging/InboxService';

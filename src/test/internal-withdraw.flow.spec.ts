@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { container } from 'tsyringe';
+import { container } from '../config/container';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { sequelize } from '../config/database';

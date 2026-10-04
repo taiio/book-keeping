@@ -49,7 +49,7 @@ export class InsufficientBalanceError extends LedgerError {
 export class InvalidTransitionError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
-  constructor(journalTransactionId: number, currentStateId: number | null, targetStateId: number) {
+  constructor(journalTransactionId: string, currentStateId: number | null, targetStateId: number) {
     super(`Invalid transition: journalTransaction=${journalTransactionId}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}`);
   }
 }
@@ -65,7 +65,7 @@ export class TransitionNotReadyError extends LedgerError {
 export class AmountMismatchError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
-  constructor(journalTransactionId: number, purposeId: number, expected: bigint, actual: bigint) {
+  constructor(journalTransactionId: string, purposeId: number, expected: bigint, actual: bigint) {
     super(`Amount mismatch: journalTransaction=${journalTransactionId}, purpose=${purposeId}, held=${expected}, received=${actual}`);
   }
 }
@@ -73,7 +73,7 @@ export class AmountMismatchError extends LedgerError {
 export class FeeExceedsEstimationError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
-  constructor(journalTransactionId: number, estimated: bigint, actual: bigint) {
+  constructor(journalTransactionId: string, estimated: bigint, actual: bigint) {
     super(`Real fee exceeds estimation: journalTransaction=${journalTransactionId}, estimated=${estimated}, real=${actual}`);
   }
 }
@@ -89,7 +89,31 @@ export class IdempotencyConflictError extends LedgerError {
 export class TransactionHashConflictError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
 
-  constructor(journalTransactionId: number, existing: string, incoming: string) {
+  constructor(journalTransactionId: string, existing: string, incoming: string) {
     super(`Transaction hash conflict: journalTransaction=${journalTransactionId}, existing=${existing}, incoming=${incoming}`);
+  }
+}
+
+export class ConservationError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
+
+  constructor(context: string, assetTicker: string, sent: bigint, received: bigint) {
+    super(`Conservation violated: ${context}, asset=${assetTicker}, sent=${sent}, received=${received}`);
+  }
+}
+
+export class BroadcastRejectedError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
+
+  constructor(reason: string) {
+    super(`Broadcast rejected: ${reason}`);
+  }
+}
+
+export class BroadcastClosureError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
+
+  constructor(uuidToken: string, inboxStatusId: number) {
+    super(`Closing the withdraw after a rejected broadcast failed: uuidToken=${uuidToken}, inboxStatus=${inboxStatusId}`);
   }
 }

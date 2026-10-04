@@ -88,7 +88,7 @@ export class FakeLedger {
 
       this.applied.add(payload.id);
 
-      return { outcome: payload.outcome ?? TRANSITION_OUTCOME.APPLIED, journalTransactionId: 7 };
+      return { outcome: payload.outcome ?? TRANSITION_OUTCOME.APPLIED, journalTransactionId: '7' };
     },
   };
 

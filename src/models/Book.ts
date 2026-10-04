@@ -96,11 +96,11 @@ export class Book extends Model {
 
   @Column({
     field: 'last_sequence_no',
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
-    defaultValue: 0,
+    defaultValue: '0',
   })
-  declare lastSequenceNo: number;
+  declare lastSequenceNo: string;
 
   @Column({
     field: 'wallet_type_id',

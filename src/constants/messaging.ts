@@ -35,6 +35,14 @@ export const OUTBOX_EVENT_STATUS = {
 
 export type OutboxEventStatusId = ValueOf<typeof OUTBOX_EVENT_STATUS>;
 
+export const INBOX_SOURCE = {
+  BROADCAST_RELAY: 'broadcast-relay',
+} as const;
+
+export const SYSTEM_EVENT_NAME = {
+  BROADCAST_REJECTED: 'broadcast-rejected',
+} as const;
+
 export const INBOX_STATUS_BY_OUTCOME: Readonly<Record<TransitionOutcome, InboxEventStatusId>> = {
   [TRANSITION_OUTCOME.APPLIED]: INBOX_EVENT_STATUS.APPLIED,
   [TRANSITION_OUTCOME.DUPLICATE]: INBOX_EVENT_STATUS.DUPLICATE,

@@ -64,7 +64,7 @@ function planForward(input: PlanInput): PlannedPosting[] {
   return planned;
 }
 
-function checkAgainstHeld(journalTransactionId: number, leg: LedgerLeg, requested: bigint, held: Holding | undefined): bigint {
+function checkAgainstHeld(journalTransactionId: string, leg: LedgerLeg, requested: bigint, held: Holding | undefined): bigint {
   if (!held) throw new AmountMismatchError(journalTransactionId, leg.purpose, 0n, requested);
 
   if (leg.purpose === BOOK_POSTING_PURPOSE.FEE) {

@@ -23,7 +23,7 @@ export function playWithdraw(through: readonly number[], amount = '1000', fee = 
 
   for (const targetStateId of through) {
     const planned = planTransition({
-      journalTransactionId: 1,
+      journalTransactionId: '1',
       transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
       currentStateId,
       targetStateId,

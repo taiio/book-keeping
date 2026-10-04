@@ -8,7 +8,7 @@ import { amountLeg, feeLeg, HAPPY_PATH, netByBook, playWithdraw, withdrawHolding
 const S = TRANSACTION_STATE;
 
 const plan = (targetStateId: number, currentStateId: number | null, holdings = withdrawHoldings(currentStateId ?? 0), legs = [amountLeg('1000'), feeLeg('8')], consumedFee?: string) =>
-  planTransition({ journalTransactionId: 1, transactionTypeId: TRANSACTION_TYPE.WITHDRAW, currentStateId, targetStateId, legs, holdings, consumedFee });
+  planTransition({ journalTransactionId: '1', transactionTypeId: TRANSACTION_TYPE.WITHDRAW, currentStateId, targetStateId, legs, holdings, consumedFee });
 
 describe('forward planning', () => {
   it('reserves amount and fee when entering AUTHORIZING', () => {

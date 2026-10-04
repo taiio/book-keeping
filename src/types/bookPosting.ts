@@ -11,7 +11,7 @@ export interface PostingTokenParts {
 
 export interface CreateBookPostingParams extends CreatedByParams {
   bookId: number;
-  journalTransactionId: number;
+  journalTransactionId: string;
 
   amount: string;
   assetTypeId: number | null;

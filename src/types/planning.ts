@@ -19,7 +19,7 @@ export interface PlannedPosting {
 }
 
 export interface PlanInput {
-  journalTransactionId: number;
+  journalTransactionId: string;
   transactionTypeId: number;
   currentStateId: number | null;
   targetStateId: number;

@@ -1,7 +1,8 @@
 import { UnsupportedOperationError, ValidationError } from '../common/errors';
-import { SUPPORTED_SYSTEM_STATE_IDS, TRANSACTION_TYPE } from '../constants';
+import { EXCEPTION_STATE_IDS, SUPPORTED_SYSTEM_STATE_IDS, TRANSACTION_TYPE } from '../constants';
 import type { Withdraw } from '../types';
 import { assertPositiveQuantity, assertPresent, assertUuid } from './common';
+import { assertConserved } from './conservation';
 
 export function validateWithdraw(withdraw: Withdraw): void {
   if (withdraw.type !== TRANSACTION_TYPE.WITHDRAW) {
@@ -32,6 +33,11 @@ export function validateWithdraw(withdraw: Withdraw): void {
 
   for (const recipient of withdraw.recipient) {
     assertUuid(recipient.idempotencyToken, 'recipient.idempotencyToken');
+    assertPositiveQuantity(recipient.quantity, 'recipient.quantity');
+  }
+
+  if (!EXCEPTION_STATE_IDS.has(withdraw.transactionStateId)) {
+    assertConserved(withdraw.sender, withdraw.recipient, `withdraw ${withdraw.uuidToken}`);
   }
 }
 

@@ -24,10 +24,10 @@ export class JournalTransaction extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column({
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
   })
-  declare id: number;
+  declare id: string;
 
   @Column({
     field: 'uuid_token',

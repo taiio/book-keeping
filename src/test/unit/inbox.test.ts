@@ -96,12 +96,12 @@ describe('out-of-order messages', () => {
 
 describe('failures', () => {
   it('marks a non-retryable ledger error as ERROR', async () => {
-    assert.equal(await ingest('bad', { fail: new InvalidTransitionError(1, 5, 1) }), S.ERROR);
+    assert.equal(await ingest('bad', { fail: new InvalidTransitionError('1', 5, 1) }), S.ERROR);
     assert.match(repo.events[0].lastError ?? '', /Invalid transition/);
   });
 
   it('marks idempotency or hash conflicts as CONFLICT', async () => {
-    assert.equal(await ingest('c1', { fail: new TransactionHashConflictError(1, 'a', 'b') }), S.CONFLICT);
+    assert.equal(await ingest('c1', { fail: new TransactionHashConflictError('1', 'a', 'b') }), S.CONFLICT);
     assert.equal(await ingest('c2', { fail: new IdempotencyConflictError('t', 'differs') }), S.CONFLICT);
   });
 

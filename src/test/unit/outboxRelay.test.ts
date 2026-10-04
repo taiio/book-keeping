@@ -39,7 +39,7 @@ describe('OutboxRelay', () => {
     const behavior = async (id: string) => {
       if (id === '1') throw new Error('socket hang up');
       if (id === '2') throw new TransitionNotReadyError('x', null, 3);
-      if (id === '3') throw new InvalidTransitionError(1, 5, 1);
+      if (id === '3') throw new InvalidTransitionError('1', 5, 1);
     };
     const { relay, log } = setup(
       [
@@ -56,7 +56,7 @@ describe('OutboxRelay', () => {
   });
 
   it('drain keeps claiming until nothing is left, so no event waits behind a full batch', async () => {
-    const events = [1, 2, 3, 4, 5].map((id) => ({ id: String(id), eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED }));
+    const events = ['1', '2', '3', '4', '5'].map((id) => ({ id, eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED }));
     const { relay, log } = setup(events, async () => {});
 
     assert.deepEqual(await relay.drain(2), { claimed: 5, published: 5, failed: 0 });

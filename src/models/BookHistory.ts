@@ -18,10 +18,10 @@ export class BookHistory extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column({
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
   })
-  declare id: number;
+  declare id: string;
 
   @Column({
     field: 'history_transaction_type_id',
@@ -47,10 +47,10 @@ export class BookHistory extends Model {
   @ForeignKey(() => BookPosting)
   @Column({
     field: 'book_posting_id',
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: true,
   })
-  declare bookPostingId: number | null;
+  declare bookPostingId: string | null;
 
   @BelongsTo(() => BookPosting, {
     foreignKey: 'bookPostingId',
@@ -67,11 +67,11 @@ export class BookHistory extends Model {
 
   @Column({
     field: 'last_sequence_no',
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
-    defaultValue: 0,
+    defaultValue: '0',
   })
-  declare lastSequenceNo: number;
+  declare lastSequenceNo: string;
 
   @Column({
     field: 'created_date',

@@ -25,11 +25,11 @@ export interface ReceiveInboxEventResult {
 
 export interface InboxHandlerOutcome {
   outcome: TransitionOutcome;
-  journalTransactionId: number | null;
+  journalTransactionId: string | null;
 }
 
 export interface InboxOutcomeDetail {
-  journalTransactionId?: number | null;
+  journalTransactionId?: string | null;
   error?: string | null;
 }
 
@@ -49,7 +49,7 @@ export interface EnqueueOutboxEventParams {
 }
 
 export interface StateChangedPayload {
-  journalTransactionId: number;
+  journalTransactionId: string;
   idempotencyToken: string;
   uuidToken: string;
   transactionTypeId: number;

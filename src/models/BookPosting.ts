@@ -29,10 +29,10 @@ export class BookPosting extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column({
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
   })
-  declare id: number;
+  declare id: string;
 
   @Column({
     field: 'uuid_token',
@@ -45,10 +45,10 @@ export class BookPosting extends Model {
   @ForeignKey(() => JournalTransaction)
   @Column({
     field: 'journal_transaction_id',
-    type: DataType.INTEGER,
-    allowNull: true,
+    type: DataType.BIGINT,
+    allowNull: false,
   })
-  declare journalTransactionId: number | null;
+  declare journalTransactionId: string;
 
   @BelongsTo(() => JournalTransaction, {
     foreignKey: 'journalTransactionId',
@@ -93,11 +93,11 @@ export class BookPosting extends Model {
 
   @Column({
     field: 'sequence_no',
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
-    defaultValue: 0,
+    defaultValue: '0',
   })
-  declare sequenceNo: number;
+  declare sequenceNo: string;
 
   @Column({
     field: 'idempotency_token',

@@ -4,7 +4,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 import { TransitionNotReadyError } from '../common/errors';
 import { FEE_CONSUMING_STATES, HISTORY_EVENT_TYPE, OUTBOX_EVENT_TYPE, POSTING_TOKEN, TRANSITION_DECISION, TRANSITION_OUTCOME } from '../constants';
 import type { TransitionOutcome } from '../constants';
-import { bookKeyString, bookParamsForRef, bookPostingIdempotencyToken, negateQuantity } from '../helpers';
+import { bookKeyString, bookParamsForRef, bookPostingIdempotencyToken, compareIdentifiers, negateQuantity } from '../helpers';
 import type { Book, JournalTransaction } from '../models';
 import { BookRepository } from '../repositories/BookRepository';
 import { BookPostingRepository } from '../repositories/BookPostingRepository';
@@ -71,13 +71,13 @@ export class LedgerPipeline {
     return this.journalTransactionRepository.findAllByIdempotencyTokens(idempotencyTokens, tx);
   }
 
-  async getCurrentStateId(journalTransactionId: number, tx: Transaction): Promise<number | null> {
+  async getCurrentStateId(journalTransactionId: string, tx: Transaction): Promise<number | null> {
     const latest = await this.journalTransactionHistoryRepository.findLatest(journalTransactionId, tx);
     return latest?.transactionStateId ?? null;
   }
 
-  async attachTransactionHash(journalTransactionIds: number[], transactionHash: string, tx: Transaction): Promise<void> {
-    for (const journalTransactionId of [...journalTransactionIds].sort((a, b) => a - b)) {
+  async attachTransactionHash(journalTransactionIds: string[], transactionHash: string, tx: Transaction): Promise<void> {
+    for (const journalTransactionId of [...journalTransactionIds].sort(compareIdentifiers)) {
       await this.journalTransactionRepository.setTransactionHashOnce(journalTransactionId, transactionHash, tx);
     }
   }
@@ -99,14 +99,14 @@ export class LedgerPipeline {
     return results;
   }
 
-  private async lockJournalTransactions(requests: TransitionRequest[], tx: Transaction): Promise<Map<number, JournalTransaction>> {
+  private async lockJournalTransactions(requests: TransitionRequest[], tx: Transaction): Promise<Map<string, JournalTransaction>> {
     const ids = requests.map((request) => request.journalTransaction.id);
 
     if (new Set(ids).size !== ids.length) throw new Error('A journal transaction may appear only once per batch');
 
-    const locked = new Map<number, JournalTransaction>();
+    const locked = new Map<string, JournalTransaction>();
 
-    for (const id of [...ids].sort((a, b) => a - b)) {
+    for (const id of [...ids].sort(compareIdentifiers)) {
       locked.set(id, await this.journalTransactionRepository.lockById(id, tx));
     }
 

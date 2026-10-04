@@ -24,7 +24,7 @@ export class JournalTransactionHistoryRepository {
     );
   }
 
-  async findLatest(journalTransactionId: number, tx: Transaction): Promise<JournalTransactionHistory | null> {
+  async findLatest(journalTransactionId: string, tx: Transaction): Promise<JournalTransactionHistory | null> {
     return JournalTransactionHistory.findOne({ where: { journalTransactionId }, order: [['id', SORT_DIRECTION.DESC]], transaction: tx });
   }
 }

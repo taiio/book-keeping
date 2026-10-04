@@ -17,7 +17,7 @@ export class JournalTransactionRepository {
     this.journalTransactionHistoryRepository = journalTransactionHistoryRepository!;
   }
 
-  async findById(id: number, tx: Transaction): Promise<JournalTransaction | null> {
+  async findById(id: string, tx: Transaction): Promise<JournalTransaction | null> {
     return JournalTransaction.findByPk(id, { transaction: tx });
   }
 
@@ -35,7 +35,7 @@ export class JournalTransactionRepository {
     return JournalTransaction.findAll({ where: { idempotencyToken: idempotencyTokens }, order: [['id', SORT_DIRECTION.ASC]], transaction: tx });
   }
 
-  async lockById(id: number, tx: Transaction): Promise<JournalTransaction> {
+  async lockById(id: string, tx: Transaction): Promise<JournalTransaction> {
     const journalTransaction = await JournalTransaction.findByPk(id, { transaction: tx, lock: tx.LOCK.UPDATE });
 
     if (!journalTransaction) throw new NotFoundError('JournalTransaction', id);
@@ -50,7 +50,7 @@ export class JournalTransactionRepository {
     await journalTransaction.save({ transaction: tx });
   }
 
-  async setTransactionHashOnce(journalTransactionId: number, transactionHash: string, tx: Transaction): Promise<void> {
+  async setTransactionHashOnce(journalTransactionId: string, transactionHash: string, tx: Transaction): Promise<void> {
     const journalTransaction = await this.lockById(journalTransactionId, tx);
 
     if (journalTransaction.transactionHash === transactionHash) return;

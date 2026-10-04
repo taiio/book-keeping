@@ -4,7 +4,7 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { IdempotencyConflictError } from '../common/errors';
 import type { BookPostingPurposeId } from '../constants';
-import { legItemFromBook } from '../helpers';
+import { legItemFromBook, nextSequence } from '../helpers';
 import { Book, BookPosting } from '../models';
 import type { CreateBookPostingParams, Holding } from '../types';
 import { BookRepository } from './BookRepository';
@@ -20,7 +20,7 @@ export class BookPostingRepository {
 
   async createBookPosting(params: CreateBookPostingParams, tx: Transaction): Promise<BookPosting> {
     const lockedBook = params.lockedBook ?? (await this.bookRepository.lockBookById(params.bookId, tx));
-    const nextSequenceNo = Number(lockedBook.lastSequenceNo) + 1;
+    const nextSequenceNo = nextSequence(lockedBook.lastSequenceNo);
 
     const [posting, created] = await BookPosting.findOrCreate({
       where: { idempotencyToken: params.idempotencyToken },
@@ -58,7 +58,7 @@ export class BookPostingRepository {
     return posting;
   }
 
-  async findHoldings(journalTransactionId: number, tx: Transaction): Promise<Holding[]> {
+  async findHoldings(journalTransactionId: string, tx: Transaction): Promise<Holding[]> {
     const postings = await BookPosting.findAll({
       where: { journalTransactionId },
       attributes: ['bookId', 'bookPostingPurposeId', 'amount'],

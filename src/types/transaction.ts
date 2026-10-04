@@ -57,8 +57,8 @@ export interface SystemTransactionResult {
   processed: boolean;
   outcome: TransitionOutcome;
   transactionHash: string | null;
-  senderJournalTransactionIds: number[];
-  recipientJournalTransactionIds: number[];
+  senderJournalTransactionIds: string[];
+  recipientJournalTransactionIds: string[];
 }
 
 export interface TransactionEntityBase {

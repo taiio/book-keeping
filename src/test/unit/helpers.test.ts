@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 
 import { ValidationError } from '../../common/errors';
 import { POSTING_TOKEN } from '../../constants';
-import { bookPostingIdempotencyToken, deterministicUuid } from '../../helpers';
+import { bookPostingIdempotencyToken, compareIdentifiers, deterministicUuid, nextSequence } from '../../helpers';
 import { isUuid } from '../../validation/common';
 
 const UUID = '0b6f2c1e-8a44-4d1b-9c55-3a1d7e9f20c2';
@@ -40,5 +40,17 @@ describe('deterministicUuid', () => {
     assert.equal(deterministicUuid('0xabc'), deterministicUuid('0xabc'));
     assert.notEqual(deterministicUuid('0xabc'), deterministicUuid('0xabd'));
     assert.ok(isUuid(deterministicUuid('0xabc')));
+  });
+});
+
+describe('identifiers kept as strings', () => {
+  it('orders numerically, not alphabetically', () => {
+    assert.deepEqual(['10', '9', '100', '2'].sort(compareIdentifiers), ['2', '9', '10', '100']);
+  });
+
+  it('keeps full precision beyond the range of a JavaScript number', () => {
+    assert.deepEqual(['9007199254740993', '9007199254740992'].sort(compareIdentifiers), ['9007199254740992', '9007199254740993']);
+    assert.equal(nextSequence('9007199254740993'), '9007199254740994');
+    assert.equal(nextSequence('0'), '1');
   });
 });

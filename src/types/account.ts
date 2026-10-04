@@ -36,3 +36,8 @@ export interface FeeItem extends AssetAmount {
 }
 
 export type LegItem = AccountAssetIdentity;
+
+export interface QuantityItem {
+  assetTicker: string;
+  quantity: string;
+}

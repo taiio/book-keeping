@@ -6,7 +6,7 @@ export interface BlockchainSubmissionResult {
 }
 
 export interface IBlockchainSubmitter {
-  submit(transaction: SystemTransaction, journalTransactionId: number): Promise<BlockchainSubmissionResult>;
+  submit(transaction: SystemTransaction, journalTransactionId: string): Promise<BlockchainSubmissionResult>;
 }
 
 export const BLOCKCHAIN_SUBMITTER = 'IBlockchainSubmitter';

@@ -49,8 +49,8 @@ export class InboxEvent extends Model {
   @Column({ type: DataType.INTEGER, allowNull: false, defaultValue: 0 })
   declare attempts: number;
 
-  @Column({ field: 'journal_transaction_id', type: DataType.INTEGER, allowNull: true })
-  declare journalTransactionId: number | null;
+  @Column({ field: 'journal_transaction_id', type: DataType.BIGINT, allowNull: true })
+  declare journalTransactionId: string | null;
 
   @Column({ field: 'last_error', type: DataType.TEXT, allowNull: true })
   declare lastError: string | null;

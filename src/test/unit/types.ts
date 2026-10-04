@@ -9,7 +9,7 @@ export interface FakeEvent {
   status: InboxEventStatusId;
   deliveryCount: number;
   attempts: number;
-  journalTransactionId: number | null;
+  journalTransactionId: string | null;
   lastError: string | null;
   firstReceivedAt: Date;
   nextAttemptAt: Date;

@@ -17,14 +17,14 @@ export type GetOrCreateBookResult = GetOrCreateResult<{ book: Book }>;
 export interface UpdateBookParams extends UpdatedByParams {
   book: Book;
   amountDelta: string;
-  sequenceNo: number;
-  bookPostingId?: number | null;
+  sequenceNo: string;
+  bookPostingId?: string | null;
 }
 
 export interface RecordBookHistoryParams extends HistoryRecordParams {
   bookId: number;
-  bookPostingId?: number | null;
+  bookPostingId?: string | null;
 
   amount: string;
-  lastSequenceNo: number;
+  lastSequenceNo: string;
 }

@@ -20,10 +20,10 @@ export class JournalTransactionHistory extends Model {
   @PrimaryKey
   @AutoIncrement
   @Column({
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
   })
-  declare id: number;
+  declare id: string;
 
   @Column({
     field: 'history_transaction_type_id',
@@ -35,10 +35,10 @@ export class JournalTransactionHistory extends Model {
   @ForeignKey(() => JournalTransaction)
   @Column({
     field: 'journal_transaction_id',
-    type: DataType.INTEGER,
+    type: DataType.BIGINT,
     allowNull: false,
   })
-  declare journalTransactionId: number;
+  declare journalTransactionId: string;
 
   @BelongsTo(() => JournalTransaction, {
     foreignKey: 'journalTransactionId',

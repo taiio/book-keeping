@@ -2,15 +2,16 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 
+import { BroadcastRejectedError } from '../common/errors';
 import { sequelize } from '../config/database';
 import { container } from '../config/container';
-import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, OUTBOX_EVENT_TYPE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, INBOX_SOURCE, JOURNAL_TRANSACTION_STATE, OUTBOX_EVENT_TYPE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { InboxProcessor } from '../messaging/InboxProcessor';
 import { InboxService } from '../messaging/InboxService';
 import { OutboxRelay } from '../messaging/OutboxRelay';
-import { Book, InboxEvent } from '../models';
+import { Book, InboxEvent, JournalTransaction } from '../models';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
 import type { AccountIdentity, BlockchainMessagePayload, Withdraw } from '../types';
@@ -78,8 +79,11 @@ async function main(): Promise<void> {
   const hashes = new Map<string, string>();
   const hashOf = (uuidToken: string) => hashes.get(uuidToken) ?? createHash('sha256').update(uuidToken).digest('hex');
 
+  const rejected = new Set<string>();
   const submitter: IBlockchainSubmitter = {
     async submit(transaction) {
+      if (rejected.has(transaction.uuidToken)) throw new BroadcastRejectedError('the node rejected the transaction');
+
       return { transactionHash: hashOf(transaction.uuidToken) };
     },
   };
@@ -186,6 +190,57 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
 
     console.log('C. inbox out-of-order + replay: ok');
+  }
+
+  {
+    const { user, feePayer, withdraw, uuidToken } = await newCase();
+
+    rejected.add(uuidToken);
+
+    for (const state of [S.AUTHORIZING.id, S.AUTHORIZED.id, S.SENT.id]) await system.handle(withdraw(state));
+
+    await broadcast();
+
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 1000n);
+    assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.CONFIRMED.id), 100n);
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.SENT.id), 0n);
+    assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.SENT.id), 0n);
+
+    const journals = await JournalTransaction.findAll({ where: { uuidToken } });
+
+    assert.ok(journals.length > 0);
+    assert.ok(journals.every((journal: JournalTransaction) => journal.journalTransactionState === JOURNAL_TRANSACTION_STATE.FAILED));
+
+    const closing = await InboxEvent.findOne({ where: { source: INBOX_SOURCE.BROADCAST_RELAY, orderingKey: uuidToken } });
+
+    assert.equal(closing!.status, INBOX_EVENT_STATUS.APPLIED);
+
+    await broadcast();
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 1000n);
+
+    console.log('D. rejected broadcast closes the withdraw: ok');
+  }
+
+  {
+    const { user, withdraw, chain } = await newCase();
+    const inbox = container.resolve(InboxService);
+
+    for (const state of [S.AUTHORIZING.id, S.AUTHORIZED.id, S.SENT.id]) await system.handle(withdraw(state));
+
+    await broadcast();
+
+    const tampered = chain(S.CONFIRMING.id);
+
+    tampered.recipients = [{ ...tampered.recipients[0], quantity: '599' }];
+
+    assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: tampered }), INBOX_EVENT_STATUS.ERROR);
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.SENT.id), 600n);
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
+
+    assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) }), INBOX_EVENT_STATUS.APPLIED);
+    assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 600n);
+
+    console.log('E. conservation check: ok');
   }
 
   console.log('failure-and-replay flows completed');

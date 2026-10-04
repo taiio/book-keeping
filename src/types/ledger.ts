@@ -18,7 +18,7 @@ export interface TransitionRequest {
 }
 
 export interface TransitionResult {
-  journalTransactionId: number;
+  journalTransactionId: string;
   outcome: TransitionOutcome;
 }
 
@@ -44,7 +44,7 @@ export interface EvaluateParams {
   transactionTypeId: number;
   currentStateId: number | null;
   targetStateId: number;
-  journalTransactionId: number;
+  journalTransactionId: string;
   journalTransactionState: number;
 }
 
