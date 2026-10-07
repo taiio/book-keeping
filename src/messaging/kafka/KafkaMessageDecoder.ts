@@ -12,7 +12,7 @@ export class KafkaMessageDecoder {
 
   decode(message: ConsumedMessage): DecodedMessage {
     const kind = this.kinds.get(message.topic);
-    console.log(`kind: ${kind}, message: ${JSON.parse(JSON.stringify(message) )}`);
+
     if (kind === undefined) throw new PoisonMessageError(`no route for topic ${message.topic}`);
 
     if (message.value === null) throw new PoisonMessageError('empty message value');
@@ -21,6 +21,7 @@ export class KafkaMessageDecoder {
     const eventId = message.headers[KAFKA_HEADER.EVENT_ID] ?? body.eventId;
 
     if (typeof eventId !== 'string' || eventId.length === 0) throw new PoisonMessageError('missing eventId');
+
     return { kind, envelope: { eventId, source: message.topic, payload: body } };
   }
 

@@ -3,7 +3,6 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { BookHistory } from '../models';
 import type { RecordBookHistoryParams } from '../types';
-import { SORT_DIRECTION } from '../constants';
 
 @singleton()
 @autoInjectable()
@@ -20,9 +19,5 @@ export class BookHistoryRepository {
       },
       { transaction: tx },
     );
-  }
-
-  async findLatest(bookId: number, tx: Transaction): Promise<BookHistory | null> {
-    return BookHistory.findOne({ where: { bookId }, order: [['id', SORT_DIRECTION.DESC]], transaction: tx });
   }
 }

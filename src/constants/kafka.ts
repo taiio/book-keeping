@@ -41,6 +41,4 @@ export const SASL_MECHANISM = {
   SCRAM_SHA_512: 'scram-sha-512',
 } as const;
 
-export type SaslMechanism = ValueOf<typeof SASL_MECHANISM>;
-
 export const SHUTDOWN_SIGNALS = ['SIGINT', 'SIGTERM'] as const;

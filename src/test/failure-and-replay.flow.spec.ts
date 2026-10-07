@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { BroadcastRejectedError } from '../common/errors';
+import { createLogger, errorMeta } from '../common/logger';
 import { sequelize } from '../config/database';
 import { container } from '../config/container';
 import {
@@ -92,6 +93,8 @@ function scenario(user: AccountIdentity, feePayer: AccountIdentity) {
   return { withdraw, chain, transactionHash, uuidToken };
 }
 
+const log = createLogger('test:failure-and-replay');
+
 async function main(): Promise<void> {
   const hashes = new Map<string, string>();
   const hashOf = (uuidToken: string) => hashes.get(uuidToken) ?? createHash('sha256').update(uuidToken).digest('hex');
@@ -152,7 +155,7 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.AUTHORIZED.id), 0n);
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.AUTHORIZED.id), 0n);
 
-    console.log('A. rejected + replay: ok');
+    log.info('A. rejected + replay: ok');
   }
 
   {
@@ -169,7 +172,7 @@ async function main(): Promise<void> {
     assert.equal((await amountOf(feePayer.accountId, ETH.assetTypeId, null)) - externalBefore.feePayer, 8n);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
 
-    console.log('B. failed after mining: ok');
+    log.info('B. failed after mining: ok');
   }
 
   {
@@ -206,7 +209,7 @@ async function main(): Promise<void> {
     await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) });
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
 
-    console.log('C. inbox out-of-order + replay: ok');
+    log.info('C. inbox out-of-order + replay: ok');
   }
 
   {
@@ -235,7 +238,7 @@ async function main(): Promise<void> {
     await broadcast();
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 1000n);
 
-    console.log('D. rejected broadcast closes the withdraw: ok');
+    log.info('D. rejected broadcast closes the withdraw: ok');
   }
 
   {
@@ -260,14 +263,14 @@ async function main(): Promise<void> {
     );
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 600n);
 
-    console.log('E. conservation check: ok');
+    log.info('E. conservation check: ok');
   }
 
-  console.log('failure-and-replay flows completed');
+  log.info('failure-and-replay flows completed');
   await sequelize.close();
 }
 
 main().catch((error) => {
-  console.error(error);
+  log.error('flow failed', errorMeta(error));
   process.exit(1);
 });

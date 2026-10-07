@@ -17,10 +17,6 @@ export class JournalTransactionRepository {
     this.journalTransactionHistoryRepository = journalTransactionHistoryRepository!;
   }
 
-  async findById(id: string, tx: Transaction): Promise<JournalTransaction | null> {
-    return JournalTransaction.findByPk(id, { transaction: tx });
-  }
-
   async findAllByTransactionHash(transactionHash: string, tx: Transaction): Promise<JournalTransaction[]> {
     return JournalTransaction.findAll({ where: { transactionHash }, order: [['id', SORT_DIRECTION.ASC]], transaction: tx });
   }

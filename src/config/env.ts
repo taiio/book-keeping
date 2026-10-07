@@ -24,8 +24,20 @@ function readList(name: string, defaultValue: readonly string[]): readonly strin
     .filter((item) => item.length > 0);
 }
 
+const nodeEnv = readString('NODE_ENV', 'development');
+const isProduction = nodeEnv === 'production';
+
 export const env = {
-  nodeEnv: readString('NODE_ENV', 'development'),
+  nodeEnv,
+
+  log: {
+    // error | warn | info | http | verbose | debug | silly | silent
+    level: readString('LOG_LEVEL', isProduction ? 'info' : 'debug').toLowerCase(),
+    // Coloured, human-readable output. Defaults to on outside production.
+    colorize: readBool('LOG_COLORIZE', !isProduction),
+    // One JSON object per line (for Loki / ELK / CloudWatch). Defaults to on in production.
+    json: readBool('LOG_JSON', isProduction),
+  },
 
   db: {
     host: readString('DB_HOST', 'localhost'),

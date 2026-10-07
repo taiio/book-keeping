@@ -16,10 +16,6 @@ export class BookRepository {
     this.bookHistoryRepository = bookHistoryRepository!;
   }
 
-  async findBook(params: BookParams, tx: Transaction): Promise<Book | null> {
-    return Book.findOne({ where: this.bookKey(params), transaction: tx });
-  }
-
   async getOrCreateBook(params: BookParams, tx: Transaction): Promise<GetOrCreateBookResult> {
     const [book, created] = await Book.findOrCreate({
       where: this.bookKey(params),

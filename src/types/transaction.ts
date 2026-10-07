@@ -1,4 +1,4 @@
-import type { JournalTransactionStateId, TRANSACTION_TYPE, TransitionOutcome, TransactionStateId } from '../constants';
+import type { TRANSACTION_TYPE, TransitionOutcome } from '../constants';
 import type { JournalTransaction } from '../models';
 import type { AccountItem, FeeItem } from './account';
 import type { TransitionResult } from './ledger';
@@ -59,30 +59,4 @@ export interface SystemTransactionResult {
   transactionHash: string | null;
   senderJournalTransactionIds: string[];
   recipientJournalTransactionIds: string[];
-}
-
-export interface TransactionEntityBase {
-  id: string;
-
-  idempotencyToken: string;
-  uuidToken: string;
-
-  transactionStateId: TransactionStateId;
-
-  journalTransactionState: JournalTransactionStateId;
-
-  transactionHash?: string;
-  blockNumber?: number;
-
-  errorCode?: string | number;
-  errorMessage?: string;
-
-  consumedFee?: {
-    payerAddress?: string;
-    assetTicker?: string;
-    quantity: string;
-  };
-
-  createdAt: Date;
-  updatedAt: Date;
 }

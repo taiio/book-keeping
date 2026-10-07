@@ -1,8 +1,11 @@
+import { createLogger, errorMeta } from '../common/logger';
 import { sequelize } from '../config/database';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BookPurpose, TransactionState } from '../models';
 import type { LookupDefinition, LookupRow } from '../types';
 import { POST_SYNC_SQL } from './postSyncSql';
+
+const log = createLogger('syncDb');
 
 async function seedLookupTable(definitions: readonly LookupDefinition[], upsert: (row: LookupRow) => Promise<unknown>): Promise<void> {
   for (const { id, code, name, description } of definitions) {
@@ -40,10 +43,10 @@ DROP TABLE IF EXISTS public.outbox_event CASCADE;
 
 async function main(): Promise<void> {
   try {
-    console.log('DROP ALL TABLE CASADE');
+    log.warn('dropping all ledger tables (CASCADE)');
     await sequelize.query(sql);
 
-    console.log('Syncing database...');
+    log.info('syncing database schema');
 
     await sequelize.authenticate();
 
@@ -55,13 +58,13 @@ async function main(): Promise<void> {
       await sequelize.query(statement);
     }
 
-    console.log('Database sync completed successfully.');
+    log.info('database sync completed', { postSyncStatements: POST_SYNC_SQL.length });
 
     await seed();
 
-    console.log('Seed completed successfully.');
+    log.info('seed completed');
   } catch (error) {
-    console.error('Database sync/seed failed:', error);
+    log.error('database sync/seed failed', errorMeta(error));
     process.exitCode = 1;
   } finally {
     await sequelize.close();

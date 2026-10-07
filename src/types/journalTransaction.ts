@@ -1,6 +1,5 @@
-import type { JournalTransactionStateId } from '../constants';
 import type { JournalTransaction } from '../models';
-import type { CreatedByParams, GetOrCreateResult, HistoryRecordParams, UpdatedByParams } from './common';
+import type { CreatedByParams, GetOrCreateResult, HistoryRecordParams } from './common';
 
 export interface GetOrCreateJournalTransactionParams extends CreatedByParams {
   idempotencyToken: string;
@@ -15,12 +14,6 @@ export interface GetOrCreateJournalTransactionParams extends CreatedByParams {
 }
 
 export type GetOrCreateJournalTransactionResult = GetOrCreateResult<{ journalTransaction: JournalTransaction }>;
-
-export interface UpdateJournalTransactionParams extends UpdatedByParams {
-  journalTransactionId: string;
-
-  journalTransactionState?: JournalTransactionStateId;
-}
 
 export interface RecordJournalTransactionHistoryParams extends HistoryRecordParams {
   journalTransaction: JournalTransaction;

@@ -34,7 +34,7 @@ export class InboxEventRepository {
       },
       transaction: tx,
     });
-    console.log(`InboxEventRepository.receive: eventId=${params.eventId}, created=${created}, status=${event.status}`);
+
     if (created) return { event, created: true, conflict: false };
 
     const conflict = event.payloadHash !== params.payloadHash;

@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
 
+import { logger } from '../../common/logger';
 import { IntervalWorker } from '../../messaging/workers/IntervalWorker';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -36,10 +37,10 @@ describe('IntervalWorker', () => {
   });
 
   it('keeps going after a run that failed', async () => {
-    const original = console.error;
+    const wasSilent = logger.silent;
     let runs = 0;
 
-    console.error = () => {};
+    logger.silent = true;
 
     const worker = new IntervalWorker(
       'test',
@@ -55,7 +56,7 @@ describe('IntervalWorker', () => {
     await sleep(80);
     await worker.stop();
 
-    console.error = original;
+    logger.silent = wasSilent;
 
     assert.ok(runs >= 2);
   });

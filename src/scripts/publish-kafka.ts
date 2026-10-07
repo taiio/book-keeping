@@ -8,176 +8,130 @@ const kafka = new Kafka({
 
 const producer = kafka.producer();
 
-const SYSTEM_TOPIC = 'bookkeeping.system-transactions';
 const BLOCKCHAIN_TOPIC = 'bookkeeping.blockchain-events';
 
 const TRANSACTION_STATE = {
-  CONFIRMING: {
-    id: 5,
-  },
-};
+  CONFIRMING: 4,
+  CONFIRMED: 5,
+} as const;
 
 const BOOK_POSTING_PURPOSE = {
   AMOUNT: 1,
   FEE: 2,
   REWARD: 3,
-};
+} as const;
 
-function createBlockchainPayload() {
-  return {
-    uuidToken: randomUUID(),
-    eventId: randomUUID(),
-    transactionHash: randomBytes(32).toString('hex'),
+const transaction = {
+  uuidToken: randomUUID(),
+  transactionHash: randomBytes(32).toString('hex'),
 
-    blockNumber: randomInt(10000),
-
-    status: TRANSACTION_STATE.CONFIRMING.id,
-
-    senders: [
-      {
-        address: randomBytes(12).toString('hex'),
-        assetTicker: 'USDT',
-        quantity: '1000',
-      },
-    ],
-
-    recipients: [
-      {
-        idempotencyToken: randomUUID(),
-        address: randomBytes(16).toString('hex'),
-        assetTicker: 'USDT',
-        quantity: '1000',
-        type: BOOK_POSTING_PURPOSE.AMOUNT,
-
-        account: {
-          clientId: 1,
-          accountId: 1,
-          assetTypeId: 1,
-          walletTypeId: 1,
-          assetId: 1,
-        },
-      },
-
-      {
-        idempotencyToken: randomUUID(),
-        address: randomBytes(16).toString('hex'),
-        assetTicker: 'ETH',
-        quantity: '10',
-        type: BOOK_POSTING_PURPOSE.AMOUNT,
-
-        account: {
-          clientId: 1,
-          accountId: 1,
-          assetTypeId: 2,
-          walletTypeId: 1,
-          assetId: 2,
-        },
-      },
-
-      {
-        idempotencyToken: randomUUID(),
-        address: randomBytes(16).toString('hex'),
-        assetTicker: 'ETH',
-        quantity: '10',
-        type: BOOK_POSTING_PURPOSE.AMOUNT,
-
-        account: {
-          clientId: 1,
-          accountId: 3,
-          assetTypeId: 2,
-          walletTypeId: 1,
-          assetId: 30,
-        },
-      },
-    ],
-
-    networkFee: {
-      idempotencyToken: randomUUID(),
-      payerAddress: randomBytes(12).toString('hex'),
-      assetTicker: 'ETH',
-      quantity: '1',
-    },
-  };
-}
-
-function createSystemPayload() {
-  return {
-    uuidToken: randomUUID(),
-
-    transactionType: 'WITHDRAW',
-
-    amount: {
+  senders: [
+    {
+      address: randomBytes(12).toString('hex'),
       assetTicker: 'USDT',
       quantity: '1000',
     },
+  ],
 
-    sender: {
-      clientId: 1,
-      accountId: 1,
-      assetTypeId: 1,
-      walletTypeId: 1,
-      assetId: 1,
+  recipients: [
+    {
+      idempotencyToken: randomUUID(),
+      address: randomBytes(16).toString('hex'),
+      assetTicker: 'USDT',
+      quantity: '1000',
+      type: BOOK_POSTING_PURPOSE.AMOUNT,
+
+      account: {
+        clientId: 1,
+        accountId: 1,
+        assetTypeId: 1,
+        walletTypeId: 1,
+        assetId: 1,
+      },
     },
 
-    recipient: {
-      clientId: 1,
-      accountId: 3,
-      assetTypeId: 1,
-      walletTypeId: 1,
-      assetId: 1,
+    {
+      idempotencyToken: randomUUID(),
+      address: randomBytes(16).toString('hex'),
+      assetTicker: 'ETH',
+      quantity: '10',
+      type: BOOK_POSTING_PURPOSE.AMOUNT,
+
+      account: {
+        clientId: 1,
+        accountId: 1,
+        assetTypeId: 2,
+        walletTypeId: 1,
+        assetId: 2,
+      },
     },
-  };
-}
+
+    {
+      idempotencyToken: randomUUID(),
+      address: randomBytes(16).toString('hex'),
+      assetTicker: 'ETH',
+      quantity: '10',
+      type: BOOK_POSTING_PURPOSE.AMOUNT,
+
+      account: {
+        clientId: 1,
+        accountId: 3,
+        assetTypeId: 2,
+        walletTypeId: 1,
+        assetId: 30,
+      },
+    },
+  ],
+
+  networkFee: {
+    idempotencyToken: randomUUID(),
+    payerAddress: randomBytes(12).toString('hex'),
+    assetTicker: 'ETH',
+    quantity: '1',
+  },
+};
 
 async function main() {
   await producer.connect();
 
   try {
-    // ==========================================================
-    // 1. Blockchain event
-    // ==========================================================
+    // CONFIRMING
+    const confirmingEvent = {
+      ...transaction,
+      eventId: randomUUID(),
+      blockNumber: randomInt(10000),
+      status: TRANSACTION_STATE.CONFIRMING,
+    };
 
-    const blockchainPayload = createBlockchainPayload();
+    // CONFIRMED
+    const confirmedEvent = {
+      ...transaction,
+      eventId: randomUUID(),
+      blockNumber: confirmingEvent.blockNumber,
+      status: TRANSACTION_STATE.CONFIRMED,
+    };
 
     await producer.send({
       topic: BLOCKCHAIN_TOPIC,
-
       messages: [
         {
-          key: blockchainPayload.transactionHash,
-          value: JSON.stringify(blockchainPayload),
+          key: transaction.transactionHash,
+          value: JSON.stringify(confirmingEvent),
+        },
+        {
+          key: transaction.transactionHash,
+          value: JSON.stringify(confirmedEvent),
         },
       ],
     });
 
-    console.log('\n[Kafka] Published blockchain event:', BLOCKCHAIN_TOPIC);
+    console.log(`\n[Kafka] Published events: ${BLOCKCHAIN_TOPIC}`);
 
-    console.dir(blockchainPayload, {
-      depth: null,
-    });
+    console.log('\n[CONFIRMING]');
+    console.dir(confirmingEvent, { depth: null });
 
-    // // ==========================================================
-    // // 2. System transaction
-    // // ==========================================================
-
-    // const systemPayload = createSystemPayload();
-
-    // await producer.send({
-    //   topic: SYSTEM_TOPIC,
-
-    //   messages: [
-    //     {
-    //       key: systemPayload.uuidToken,
-    //       value: JSON.stringify(systemPayload),
-    //     },
-    //   ],
-    // });
-
-    // console.log('\n[Kafka] Published system transaction:', SYSTEM_TOPIC);
-
-    // console.dir(systemPayload, {
-    //   depth: null,
-    // });
+    console.log('\n[CONFIRMED]');
+    console.dir(confirmedEvent, { depth: null });
   } finally {
     await producer.disconnect();
   }

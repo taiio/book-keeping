@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { container } from 'tsyringe';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
+import { createLogger, errorMeta } from '../common/logger';
 import { sequelize } from '../config/database';
 import { TRANSACTION_STATE, TRANSACTION_TYPE, OUTBOX_EVENT_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
@@ -18,6 +19,8 @@ const mockSubmitter: IBlockchainSubmitter = {
     return { transactionHash };
   },
 };
+
+const log = createLogger('test:internal-withdraw');
 
 async function main() {
   container.registerInstance(BLOCKCHAIN_SUBMITTER, mockSubmitter);
@@ -191,11 +194,11 @@ async function main() {
   await blockchainEventHandler.handle(payload);
   await blockchainEventHandler.handle({ ...payload, status: TRANSACTION_STATE.CONFIRMED.id });
 
-  console.log('Internal withdraw flow completed');
+  log.info('Internal withdraw flow completed');
   await sequelize.close();
 }
 
 main().catch((error) => {
-  console.error(error);
+  log.error('flow failed', errorMeta(error));
   process.exit(1);
 });

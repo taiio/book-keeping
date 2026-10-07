@@ -19,8 +19,6 @@ export const TRANSITION_DECISION = {
   EARLY: 'EARLY',
 } as const;
 
-export type TransitionDecisionKind = ValueOf<typeof TRANSITION_DECISION>;
-
 const S = TRANSACTION_STATE;
 
 export const ENTRY_STATES: Readonly<Record<number, number>> = {

@@ -1,5 +1,5 @@
 import type { BookPostingPurposeId, TRANSITION_DECISION, TransitionOutcome } from '../constants';
-import type { Book, JournalTransaction } from '../models';
+import type { JournalTransaction } from '../models';
 import type { PlannedPosting } from './planning';
 import type { LegItem } from './account';
 import type { BookRef } from './book';
@@ -25,12 +25,6 @@ export interface TransitionResult {
 export interface LedgerMovement {
   from: BookRef;
   to: BookRef;
-}
-
-export interface ResolvedPosting {
-  planned: PlannedPosting;
-  from: Book;
-  to: Book;
 }
 
 export type TransitionDecision =

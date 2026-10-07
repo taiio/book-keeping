@@ -2,6 +2,8 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { TransitionNotReadyError } from '../common/errors';
+import { createLogger } from '../common/logger';
+import { stateName, transactionTypeName } from '../common/logLabels';
 import { OUTBOX_EVENT_TYPE, POSTING_TOKEN, TRANSACTION_STATE, TRANSACTION_TYPE, TRANSITION_OUTCOME } from '../constants';
 import type { TransitionOutcome } from '../constants';
 import { aggregateOutcome, isFeePaidBy, isInternalItem } from '../helpers';
@@ -13,6 +15,8 @@ import type { GetOrCreateJournalTransactionParams, SystemTransactionResult, With
 import { validateWithdraw } from '../validation';
 import { buildClosingRequests } from './requests/closingRequests';
 import { buildWithdrawRequests } from './requests/withdrawRequests';
+
+const log = createLogger('withdraw');
 
 @singleton()
 @autoInjectable()
@@ -26,10 +30,27 @@ export class SystemTransactionHandler {
   }
 
   async applyInTransaction(withdraw: Withdraw, tx: Transaction): Promise<SystemTransactionResult> {
+    const state = stateName(withdraw.transactionStateId);
+
+    log.info('withdraw event received', {
+      uuidToken: withdraw.uuidToken,
+      state,
+      senders: withdraw.sender.length,
+      recipients: withdraw.recipient.length,
+    });
+
     validateWithdraw(withdraw);
 
     const journalTransactions = await this.execute(withdraw, tx);
     const outcome = aggregateOutcome(journalTransactions.results);
+
+    log.info('withdraw event handled', {
+      uuidToken: withdraw.uuidToken,
+      state,
+      outcome,
+      senderJournalTransactions: journalTransactions.senders.length,
+      recipientJournalTransactions: journalTransactions.recipients.length,
+    });
 
     if (withdraw.transactionStateId === TRANSACTION_STATE.SENT.id && outcome === TRANSITION_OUTCOME.APPLIED) {
       await this.outboxEventRepository.enqueue(
@@ -42,6 +63,8 @@ export class SystemTransactionHandler {
         },
         tx,
       );
+
+      log.info('broadcast requested', { uuidToken: withdraw.uuidToken });
     }
 
     return this.buildResult(withdraw, journalTransactions, outcome);
@@ -50,8 +73,17 @@ export class SystemTransactionHandler {
   private execute(withdraw: Withdraw, tx: Transaction): Promise<WithdrawJournalTransactions> {
     const { transactionStateId } = withdraw;
 
-    if (transactionStateId === TRANSACTION_STATE.AUTHORIZING.id) return this.authorize(withdraw, tx);
-    if (isExceptionState(transactionStateId)) return this.close(withdraw, tx);
+    if (transactionStateId === TRANSACTION_STATE.AUTHORIZING.id) {
+      log.debug('authorizing: creating journal transactions', { uuidToken: withdraw.uuidToken });
+      return this.authorize(withdraw, tx);
+    }
+
+    if (isExceptionState(transactionStateId)) {
+      log.debug('closing the withdraw', { uuidToken: withdraw.uuidToken, state: stateName(transactionStateId) });
+      return this.close(withdraw, tx);
+    }
+
+    log.debug('advancing the withdraw', { uuidToken: withdraw.uuidToken, state: stateName(transactionStateId) });
 
     return this.advance(withdraw, tx);
   }
@@ -120,7 +152,15 @@ export class SystemTransactionHandler {
     const journalTransactions: JournalTransaction[] = [];
 
     for (const item of items) {
-      journalTransactions.push(await this.ledgerPipeline.createJournalTransaction({ uuidToken: withdraw.uuidToken, ...item }, tx));
+      const journalTransaction = await this.ledgerPipeline.createJournalTransaction({ uuidToken: withdraw.uuidToken, ...item }, tx);
+
+      log.debug('journal transaction ready', {
+        uuidToken: withdraw.uuidToken,
+        journalTransactionId: journalTransaction.id,
+        idempotencyToken: item.idempotencyToken,
+        type: transactionTypeName(item.transactionTypeId),
+      });
+      journalTransactions.push(journalTransaction);
     }
 
     return journalTransactions;
