@@ -3,9 +3,11 @@ import { VALIDATION_PATTERN } from '../constants';
 
 export const isUuid = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.UUID.test(value);
 
-export const isPositiveIntegerString = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.POSITIVE_INTEGER.test(value);
+export const isPositiveIntegerString = (value: unknown): value is string =>
+  typeof value === 'string' && VALIDATION_PATTERN.POSITIVE_INTEGER.test(value);
 
-export const isNonNegativeIntegerString = (value: unknown): value is string => typeof value === 'string' && VALIDATION_PATTERN.NON_NEGATIVE_INTEGER.test(value);
+export const isNonNegativeIntegerString = (value: unknown): value is string =>
+  typeof value === 'string' && VALIDATION_PATTERN.NON_NEGATIVE_INTEGER.test(value);
 
 export function assertUuid(value: unknown, label: string): asserts value is string {
   if (!isUuid(value)) throw new ValidationError(`${label} must be a uuid: ${String(value)}`);

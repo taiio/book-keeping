@@ -58,7 +58,9 @@ export class TransitionNotReadyError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.RETRYABLE;
 
   constructor(reference: number | string, currentStateId: number | null, targetStateId: number, reason?: string) {
-    super(`Transition not ready: reference=${reference}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}${reason ? `, reason=${reason}` : ''}`);
+    super(
+      `Transition not ready: reference=${reference}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}${reason ? `, reason=${reason}` : ''}`,
+    );
   }
 }
 
@@ -115,5 +117,29 @@ export class BroadcastClosureError extends LedgerError {
 
   constructor(uuidToken: string, inboxStatusId: number) {
     super(`Closing the withdraw after a rejected broadcast failed: uuidToken=${uuidToken}, inboxStatus=${inboxStatusId}`);
+  }
+}
+
+export class PoisonMessageError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.NON_RETRYABLE;
+
+  constructor(reason: string) {
+    super(`Poison message: ${reason}`);
+  }
+}
+
+export class MessageRetryError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.RETRYABLE;
+
+  constructor(reason: string) {
+    super(`Message will be redelivered: ${reason}`);
+  }
+}
+
+export class BlockchainSubmitterNotConfiguredError extends LedgerError {
+  readonly disposition = ERROR_DISPOSITION.RETRYABLE;
+
+  constructor() {
+    super('No IBlockchainSubmitter is registered: register an implementation under BLOCKCHAIN_SUBMITTER before starting the broadcast worker');
   }
 }

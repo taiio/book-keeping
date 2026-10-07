@@ -3,9 +3,9 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { NotFoundError } from '../common/errors';
-import { MESSAGING_LIMITS, OUTBOX_EVENT_STATUS, SORT_DIRECTION } from '../constants';
+import { DEAD_LETTER_STATE_ID, MESSAGING_LIMITS, OUTBOX_EVENT_STATUS, OUTBOX_EVENT_TYPE, POSTING_TOKEN, SORT_DIRECTION } from '../constants';
 import type { OutboxEventTypeId } from '../constants';
-import { nextAttemptAfter } from '../helpers';
+import { deadLetterFromOutbox, nextAttemptAfter } from '../helpers';
 import { OutboxEvent } from '../models';
 import type { EnqueueOutboxEventParams } from '../types';
 
@@ -70,6 +70,19 @@ export class OutboxEventRepository {
 
     if (!retryable || event.attempts >= MESSAGING_LIMITS.OUTBOX_MAX_ATTEMPTS) {
       event.status = OUTBOX_EVENT_STATUS.FAILED;
+
+      if (event.eventType !== OUTBOX_EVENT_TYPE.DEAD_LETTERED) {
+        await this.enqueue(
+          {
+            aggregate: String(event.id),
+            eventType: OUTBOX_EVENT_TYPE.DEAD_LETTERED,
+            stateId: DEAD_LETTER_STATE_ID.OUTBOX,
+            attempt: POSTING_TOKEN.FIRST_ATTEMPT,
+            payload: deadLetterFromOutbox(event, error),
+          },
+          tx,
+        );
+      }
     } else {
       event.nextAttemptAt = nextAttemptAfter(event.attempts);
     }

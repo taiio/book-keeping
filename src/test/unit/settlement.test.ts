@@ -7,28 +7,56 @@ import { assertSettlementBalanced } from '../../ledger/settlement';
 import type { Holding, LegItem } from '../../types';
 
 const S = TRANSACTION_STATE;
-const item = (accountId: number, assetTypeId: number, assetTicker: string): LegItem => ({ clientId: 1, accountId, assetTypeId, walletTypeId: 1, assetId: assetTypeId, assetTicker });
+const item = (accountId: number, assetTypeId: number, assetTicker: string): LegItem => ({
+  clientId: 1,
+  accountId,
+  assetTypeId,
+  walletTypeId: 1,
+  assetId: assetTypeId,
+  assetTicker,
+});
 const USDT_SENDER = item(1, 1, 'USDT');
 const ETH_PAYER = item(3, 2, 'ETH');
 const USDT_RECIPIENT_A = item(2, 1, 'USDT');
 const USDT_RECIPIENT_B = item(4, 1, 'USDT');
 
-const amount = (ref: Holding['ref'], who: LegItem, value: bigint): Holding => ({ ref, item: who, purpose: BOOK_POSTING_PURPOSE.AMOUNT, amount: value });
+const amount = (ref: Holding['ref'], who: LegItem, value: bigint): Holding => ({
+  ref,
+  item: who,
+  purpose: BOOK_POSTING_PURPOSE.AMOUNT,
+  amount: value,
+});
 
-const senderAtConfirming = (value: bigint): Holding[] => [amount(custodyBook(S.CONFIRMING.id), USDT_SENDER, value), amount(custodyBook(S.CONFIRMED.id), USDT_SENDER, -value)];
-const senderSettled = (value: bigint): Holding[] => [amount(externalBook(), USDT_SENDER, value), amount(custodyBook(S.CONFIRMED.id), USDT_SENDER, -value)];
-const recipientCredited = (who: LegItem, value: bigint, state: number = S.CONFIRMING.id): Holding[] => [amount(custodyBook(state), who, value), amount(externalBook(), who, -value)];
+const senderAtConfirming = (value: bigint): Holding[] => [
+  amount(custodyBook(S.CONFIRMING.id), USDT_SENDER, value),
+  amount(custodyBook(S.CONFIRMED.id), USDT_SENDER, -value),
+];
+const senderSettled = (value: bigint): Holding[] => [
+  amount(externalBook(), USDT_SENDER, value),
+  amount(custodyBook(S.CONFIRMED.id), USDT_SENDER, -value),
+];
+const recipientCredited = (who: LegItem, value: bigint, state: number = S.CONFIRMING.id): Holding[] => [
+  amount(custodyBook(state), who, value),
+  amount(externalBook(), who, -value),
+];
 const external = (assetTicker: string, quantity: string) => ({ assetTicker, quantity });
 
 describe('assertSettlementBalanced', () => {
   it('balances an internal withdraw to two internal recipients', () => {
     assert.doesNotThrow(() =>
-      assertSettlementBalanced(senderAtConfirming(100n), [...recipientCredited(USDT_RECIPIENT_A, 60n), ...recipientCredited(USDT_RECIPIENT_B, 40n)], [], 'event'),
+      assertSettlementBalanced(
+        senderAtConfirming(100n),
+        [...recipientCredited(USDT_RECIPIENT_A, 60n), ...recipientCredited(USDT_RECIPIENT_B, 40n)],
+        [],
+        'event',
+      ),
     );
   });
 
   it('balances a withdraw split between internal and external recipients', () => {
-    assert.doesNotThrow(() => assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '40')], 'event'));
+    assert.doesNotThrow(() =>
+      assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '40')], 'event'),
+    );
   });
 
   it('balances a withdraw to external addresses only', () => {
@@ -40,8 +68,14 @@ describe('assertSettlementBalanced', () => {
   });
 
   it('refuses recipients that receive less or more than the senders gave up', () => {
-    assert.throws(() => assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '39')], 'event'), ConservationError);
-    assert.throws(() => assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '41')], 'event'), ConservationError);
+    assert.throws(
+      () => assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '39')], 'event'),
+      ConservationError,
+    );
+    assert.throws(
+      () => assertSettlementBalanced(senderAtConfirming(100n), recipientCredited(USDT_RECIPIENT_A, 60n), [external('USDT', '41')], 'event'),
+      ConservationError,
+    );
   });
 
   it('refuses an external recipient of an asset nobody sent', () => {
@@ -53,7 +87,11 @@ describe('assertSettlementBalanced', () => {
   });
 
   it('does not constrain an asset that only the sender side holds (the fee payer sending ETH)', () => {
-    const senders = [...senderAtConfirming(100n), amount(custodyBook(S.CONFIRMING.id), ETH_PAYER, 2n), amount(custodyBook(S.CONFIRMED.id), ETH_PAYER, -2n)];
+    const senders = [
+      ...senderAtConfirming(100n),
+      amount(custodyBook(S.CONFIRMING.id), ETH_PAYER, 2n),
+      amount(custodyBook(S.CONFIRMED.id), ETH_PAYER, -2n),
+    ];
 
     assert.doesNotThrow(() => assertSettlementBalanced(senders, recipientCredited(USDT_RECIPIENT_A, 100n), [], 'event'));
   });

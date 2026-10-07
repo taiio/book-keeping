@@ -44,7 +44,8 @@ export class LedgerStateMachine {
   }
 
   private isLegal(transactionTypeId: number, currentStateId: number | null, targetStateId: number): boolean {
-    const forwardTargets = currentStateId === null ? [ENTRY_STATES[transactionTypeId]] : (FORWARD_TRANSITIONS[transactionTypeId]?.[currentStateId] ?? []);
+    const forwardTargets =
+      currentStateId === null ? [ENTRY_STATES[transactionTypeId]] : (FORWARD_TRANSITIONS[transactionTypeId]?.[currentStateId] ?? []);
 
     if (forwardTargets.includes(targetStateId)) return true;
 

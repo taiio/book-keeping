@@ -1,4 +1,4 @@
-import { autoInjectable, inject, singleton } from 'tsyringe';
+import { inject, singleton } from 'tsyringe';
 
 import { BroadcastClosureError, BroadcastRejectedError, TransitionNotReadyError } from '../../common/errors';
 import { UnitOfWork } from '../../common/UnitOfWork';
@@ -20,7 +20,6 @@ import type { OutboxEventView, Withdraw } from '../../types';
 import { InboxService } from '../InboxService';
 
 @singleton()
-@autoInjectable()
 export class BroadcastOutboxHandler implements OutboxEventHandler {
   readonly type = OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED;
 
@@ -30,15 +29,15 @@ export class BroadcastOutboxHandler implements OutboxEventHandler {
   private readonly inboxService: InboxService;
 
   constructor(
-    unitOfWork?: UnitOfWork,
-    ledgerPipeline?: LedgerPipeline,
-    @inject(BLOCKCHAIN_SUBMITTER) blockchainSubmitter?: IBlockchainSubmitter,
-    inboxService?: InboxService,
+    unitOfWork: UnitOfWork,
+    ledgerPipeline: LedgerPipeline,
+    @inject(BLOCKCHAIN_SUBMITTER) blockchainSubmitter: IBlockchainSubmitter,
+    inboxService: InboxService,
   ) {
-    this.unitOfWork = unitOfWork!;
-    this.ledgerPipeline = ledgerPipeline!;
-    this.blockchainSubmitter = blockchainSubmitter!;
-    this.inboxService = inboxService!;
+    this.unitOfWork = unitOfWork;
+    this.ledgerPipeline = ledgerPipeline;
+    this.blockchainSubmitter = blockchainSubmitter;
+    this.inboxService = inboxService;
   }
 
   async handle(event: OutboxEventView): Promise<void> {
@@ -47,7 +46,8 @@ export class BroadcastOutboxHandler implements OutboxEventHandler {
     const journalTransactions = await this.unitOfWork.execute((tx) => this.ledgerPipeline.findByUuidToken(withdraw.uuidToken, tx));
     const senders = journalTransactions.filter((jt) => jt.transactionTypeId === TRANSACTION_TYPE.WITHDRAW);
 
-    if (senders.length === 0) throw new TransitionNotReadyError(withdraw.uuidToken, null, event.stateId, 'the withdraw has no journal transaction yet');
+    if (senders.length === 0)
+      throw new TransitionNotReadyError(withdraw.uuidToken, null, event.stateId, 'the withdraw has no journal transaction yet');
 
     if (senders.some((jt) => jt.transactionHash || jt.journalTransactionState !== JOURNAL_TRANSACTION_STATE.ACTIVE)) return;
 
@@ -86,7 +86,12 @@ export class BroadcastOutboxHandler implements OutboxEventHandler {
     });
 
     if (status === INBOX_EVENT_STATUS.PENDING) {
-      throw new TransitionNotReadyError(withdraw.uuidToken, TRANSACTION_STATE.SENT.id, TRANSACTION_STATE.FAILED.id, 'closing the rejected withdraw is still pending');
+      throw new TransitionNotReadyError(
+        withdraw.uuidToken,
+        TRANSACTION_STATE.SENT.id,
+        TRANSACTION_STATE.FAILED.id,
+        'closing the rejected withdraw is still pending',
+      );
     }
 
     if (status === INBOX_EVENT_STATUS.ERROR || status === INBOX_EVENT_STATUS.CONFLICT) {

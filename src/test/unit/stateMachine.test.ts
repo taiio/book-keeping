@@ -8,7 +8,13 @@ const S = TRANSACTION_STATE;
 const machine = new LedgerStateMachine();
 
 const evaluate = (type: number, current: number | null, target: number, journalState: number = JOURNAL_TRANSACTION_STATE.ACTIVE) =>
-  machine.evaluate({ transactionTypeId: type, currentStateId: current, targetStateId: target, journalTransactionId: '1', journalTransactionState: journalState });
+  machine.evaluate({
+    transactionTypeId: type,
+    currentStateId: current,
+    targetStateId: target,
+    journalTransactionId: '1',
+    journalTransactionState: journalState,
+  });
 
 const W = TRANSACTION_TYPE.WITHDRAW;
 const D = TRANSACTION_TYPE.DEPOSIT;

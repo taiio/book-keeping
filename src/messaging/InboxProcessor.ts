@@ -2,10 +2,12 @@ import { autoInjectable, singleton } from 'tsyringe';
 
 import { IdempotencyConflictError, isRetryable, LedgerError, TransactionHashConflictError, TransitionNotReadyError } from '../common/errors';
 import { UnitOfWork } from '../common/UnitOfWork';
-import { INBOX_EVENT_STATUS, INBOX_STATUS_BY_OUTCOME, MESSAGING_LIMITS } from '../constants';
+import { DEAD_LETTER_STATE_ID, INBOX_EVENT_STATUS, INBOX_STATUS_BY_OUTCOME, MESSAGING_LIMITS, OUTBOX_EVENT_TYPE, POSTING_TOKEN } from '../constants';
 import type { InboxEventStatusId } from '../constants';
+import { deadLetterFromInbox } from '../helpers';
 import type { InboxEvent } from '../models';
 import { InboxEventRepository } from '../repositories/InboxEventRepository';
+import { OutboxEventRepository } from '../repositories/OutboxEventRepository';
 import type { InboxProcessSummary } from '../types';
 import { InboxHandlerRegistry } from './InboxHandlerRegistry';
 
@@ -17,11 +19,18 @@ export class InboxProcessor {
   private readonly unitOfWork: UnitOfWork;
   private readonly inboxEventRepository: InboxEventRepository;
   private readonly registry: InboxHandlerRegistry;
+  private readonly outboxEventRepository: OutboxEventRepository;
 
-  constructor(unitOfWork?: UnitOfWork, inboxEventRepository?: InboxEventRepository, registry?: InboxHandlerRegistry) {
+  constructor(
+    unitOfWork?: UnitOfWork,
+    inboxEventRepository?: InboxEventRepository,
+    registry?: InboxHandlerRegistry,
+    outboxEventRepository?: OutboxEventRepository,
+  ) {
     this.unitOfWork = unitOfWork!;
     this.inboxEventRepository = inboxEventRepository!;
     this.registry = registry!;
+    this.outboxEventRepository = outboxEventRepository!;
   }
 
   async process(eventId: string): Promise<InboxEventStatusId> {
@@ -32,6 +41,7 @@ export class InboxProcessor {
         if (event.status !== INBOX_EVENT_STATUS.PENDING) return event.status;
 
         const { outcome, journalTransactionId } = await this.registry.get(event.kind).handle(event.payload, tx);
+        console.log(`InboxProcessor.process: eventId=${eventId}, outcome=${outcome}, journalTransactionId=${journalTransactionId ?? 'null'}`);
         const status = INBOX_STATUS_BY_OUTCOME[outcome];
 
         await this.inboxEventRepository.markOutcome(event, status, { journalTransactionId }, tx);
@@ -92,13 +102,13 @@ export class InboxProcessor {
       if (event.status !== INBOX_EVENT_STATUS.PENDING) return event.status;
 
       if (error instanceof IdempotencyConflictError || error instanceof TransactionHashConflictError) {
-        await this.inboxEventRepository.markOutcome(event, INBOX_EVENT_STATUS.CONFLICT, { error: message }, tx);
+        await this.deadLetter(event, INBOX_EVENT_STATUS.CONFLICT, message, tx);
       } else if (error instanceof LedgerError && !isRetryable(error)) {
-        await this.inboxEventRepository.markOutcome(event, INBOX_EVENT_STATUS.ERROR, { error: message }, tx);
+        await this.deadLetter(event, INBOX_EVENT_STATUS.ERROR, message, tx);
       } else if (error instanceof TransitionNotReadyError) {
         await this.parkOrGiveUp(event, message, tx);
       } else if (event.attempts + 1 >= MESSAGING_LIMITS.INBOX_MAX_ATTEMPTS) {
-        await this.inboxEventRepository.markOutcome(event, INBOX_EVENT_STATUS.ERROR, { error: `Retries exhausted. ${message}` }, tx);
+        await this.deadLetter(event, INBOX_EVENT_STATUS.ERROR, `Retries exhausted. ${message}`, tx);
       } else {
         await this.inboxEventRepository.scheduleRetry(event, message, tx);
       }
@@ -109,10 +119,30 @@ export class InboxProcessor {
 
   private async parkOrGiveUp(event: InboxEvent, message: string, tx: Parameters<InboxEventRepository['park']>[2]): Promise<void> {
     if (Date.now() - event.firstReceivedAt.getTime() > MESSAGING_LIMITS.PARK_MAX_AGE_MS) {
-      await this.inboxEventRepository.markOutcome(event, INBOX_EVENT_STATUS.ERROR, { error: `Waited too long for a predecessor. ${message}` }, tx);
+      await this.deadLetter(event, INBOX_EVENT_STATUS.ERROR, `Waited too long for a predecessor. ${message}`, tx);
       return;
     }
 
     await this.inboxEventRepository.park(event, message, tx);
+  }
+
+  private async deadLetter(
+    event: InboxEvent,
+    status: InboxEventStatusId,
+    reason: string,
+    tx: Parameters<InboxEventRepository['park']>[2],
+  ): Promise<void> {
+    await this.inboxEventRepository.markOutcome(event, status, { error: reason }, tx);
+
+    await this.outboxEventRepository.enqueue(
+      {
+        aggregate: event.eventId,
+        eventType: OUTBOX_EVENT_TYPE.DEAD_LETTERED,
+        stateId: DEAD_LETTER_STATE_ID.INBOX,
+        attempt: POSTING_TOKEN.FIRST_ATTEMPT,
+        payload: deadLetterFromInbox(event, reason),
+      },
+      tx,
+    );
   }
 }

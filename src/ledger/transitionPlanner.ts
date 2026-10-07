@@ -50,7 +50,9 @@ function planForward(input: PlanInput): PlannedPosting[] {
       continue;
     }
 
-    const held = holdings.find((holding) => sameBookRef(holding.ref, movement.from) && sameLegItem(holding.item, leg.item) && holding.purpose === leg.purpose);
+    const held = holdings.find(
+      (holding) => sameBookRef(holding.ref, movement.from) && sameLegItem(holding.item, leg.item) && holding.purpose === leg.purpose,
+    );
 
     const heldAmount = checkAgainstHeld(journalTransactionId, leg, requested, held);
 
@@ -84,7 +86,8 @@ function settleFee(leg: LedgerLeg, from: PlannedPosting['from'], to: PlannedPost
 
   if (real > 0n) planned.push({ item: leg.item, from, to, amount: real.toString(), purpose: leg.purpose });
 
-  if (surplus > 0n) planned.push({ item: leg.item, from, to: custodyBook(TRANSACTION_STATE.CONFIRMED.id), amount: surplus.toString(), purpose: leg.purpose });
+  if (surplus > 0n)
+    planned.push({ item: leg.item, from, to: custodyBook(TRANSACTION_STATE.CONFIRMED.id), amount: surplus.toString(), purpose: leg.purpose });
 
   return planned;
 }
@@ -117,5 +120,10 @@ function planClosure(input: PlanInput): PlannedPosting[] {
 }
 
 function compareHoldings(a: Holding, b: Holding): number {
-  return a.purpose - b.purpose || a.item.accountId - b.item.accountId || a.item.assetTypeId - b.item.assetTypeId || a.item.walletTypeId - b.item.walletTypeId;
+  return (
+    a.purpose - b.purpose ||
+    a.item.accountId - b.item.accountId ||
+    a.item.assetTypeId - b.item.assetTypeId ||
+    a.item.walletTypeId - b.item.walletTypeId
+  );
 }

@@ -2,7 +2,6 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { TransitionNotReadyError } from '../common/errors';
-import { UnitOfWork } from '../common/UnitOfWork';
 import { OUTBOX_EVENT_TYPE, POSTING_TOKEN, TRANSACTION_STATE, TRANSACTION_TYPE, TRANSITION_OUTCOME } from '../constants';
 import type { TransitionOutcome } from '../constants';
 import { aggregateOutcome, isFeePaidBy, isInternalItem } from '../helpers';
@@ -18,18 +17,12 @@ import { buildWithdrawRequests } from './requests/withdrawRequests';
 @singleton()
 @autoInjectable()
 export class SystemTransactionHandler {
-  private readonly unitOfWork: UnitOfWork;
   private readonly ledgerPipeline: LedgerPipeline;
   private readonly outboxEventRepository: OutboxEventRepository;
 
-  constructor(unitOfWork?: UnitOfWork, ledgerPipeline?: LedgerPipeline, outboxEventRepository?: OutboxEventRepository) {
-    this.unitOfWork = unitOfWork!;
+  constructor(ledgerPipeline?: LedgerPipeline, outboxEventRepository?: OutboxEventRepository) {
     this.ledgerPipeline = ledgerPipeline!;
     this.outboxEventRepository = outboxEventRepository!;
-  }
-
-  handle(withdraw: Withdraw): Promise<SystemTransactionResult> {
-    return this.unitOfWork.execute((tx) => this.applyInTransaction(withdraw, tx));
   }
 
   async applyInTransaction(withdraw: Withdraw, tx: Transaction): Promise<SystemTransactionResult> {
@@ -40,7 +33,13 @@ export class SystemTransactionHandler {
 
     if (withdraw.transactionStateId === TRANSACTION_STATE.SENT.id && outcome === TRANSITION_OUTCOME.APPLIED) {
       await this.outboxEventRepository.enqueue(
-        { aggregate: withdraw.uuidToken, eventType: OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED, stateId: TRANSACTION_STATE.SENT.id, attempt: POSTING_TOKEN.FIRST_ATTEMPT, payload: withdraw },
+        {
+          aggregate: withdraw.uuidToken,
+          eventType: OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED,
+          stateId: TRANSACTION_STATE.SENT.id,
+          attempt: POSTING_TOKEN.FIRST_ATTEMPT,
+          payload: withdraw,
+        },
         tx,
       );
     }
@@ -96,7 +95,11 @@ export class SystemTransactionHandler {
       ...(feeBelongsToSender ? [] : [{ idempotencyToken: withdraw.fee.idempotencyToken, fromAccountId: withdraw.fee.account.accountId }]),
     ];
 
-    return this.createJournalTransactions(withdraw, items.map((item) => ({ ...item, transactionTypeId: TRANSACTION_TYPE.WITHDRAW })), tx);
+    return this.createJournalTransactions(
+      withdraw,
+      items.map((item) => ({ ...item, transactionTypeId: TRANSACTION_TYPE.WITHDRAW })),
+      tx,
+    );
   }
 
   private createRecipientJournalTransactions(withdraw: Withdraw, tx: Transaction): Promise<JournalTransaction[]> {

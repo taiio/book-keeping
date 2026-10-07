@@ -4,7 +4,16 @@ jest.mock('../../config/database', () => ({ sequelize: {} }));
 
 import { BroadcastClosureError, TransitionNotReadyError } from '../../common/errors';
 import { BroadcastRejectedError } from '../../common/errors';
-import { INBOX_EVENT_KIND, INBOX_EVENT_STATUS, INBOX_SOURCE, JOURNAL_TRANSACTION_STATE, OUTBOX_EVENT_TYPE, SYSTEM_EVENT_NAME, TRANSACTION_STATE, TRANSACTION_TYPE } from '../../constants';
+import {
+  INBOX_EVENT_KIND,
+  INBOX_EVENT_STATUS,
+  INBOX_SOURCE,
+  JOURNAL_TRANSACTION_STATE,
+  OUTBOX_EVENT_TYPE,
+  SYSTEM_EVENT_NAME,
+  TRANSACTION_STATE,
+  TRANSACTION_TYPE,
+} from '../../constants';
 import type { InboxEventStatusId } from '../../constants';
 import { deterministicUuid } from '../../helpers';
 import { BroadcastOutboxHandler } from '../../messaging/outboxHandlers/BroadcastOutboxHandler';

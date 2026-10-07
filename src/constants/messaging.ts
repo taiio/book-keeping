@@ -23,6 +23,7 @@ export type InboxEventStatusId = ValueOf<typeof INBOX_EVENT_STATUS>;
 export const OUTBOX_EVENT_TYPE = {
   STATE_CHANGED: 1,
   BROADCAST_REQUESTED: 2,
+  DEAD_LETTERED: 3,
 } as const;
 
 export type OutboxEventTypeId = ValueOf<typeof OUTBOX_EVENT_TYPE>;
@@ -41,6 +42,7 @@ export const INBOX_SOURCE = {
 
 export const SYSTEM_EVENT_NAME = {
   BROADCAST_REJECTED: 'broadcast-rejected',
+  STATE_CHANGED: 'state-changed',
 } as const;
 
 export const INBOX_STATUS_BY_OUTCOME: Readonly<Record<TransitionOutcome, InboxEventStatusId>> = {
@@ -51,6 +53,7 @@ export const INBOX_STATUS_BY_OUTCOME: Readonly<Record<TransitionOutcome, InboxEv
 
 export const MESSAGING_LIMITS = {
   EVENT_ID_MAX_LENGTH: 64,
+  DEAD_LETTER_REASON_MAX_LENGTH: 1000,
   INBOX_MAX_ATTEMPTS: 20,
   OUTBOX_MAX_ATTEMPTS: 10,
   OUTBOX_LEASE_MS: 30_000,

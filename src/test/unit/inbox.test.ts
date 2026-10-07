@@ -6,7 +6,7 @@ import { IdempotencyConflictError, InvalidTransitionError, TransactionHashConfli
 import { INBOX_EVENT_KIND, INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../constants';
 import { InboxProcessor } from '../../messaging/InboxProcessor';
 import { InboxService } from '../../messaging/InboxService';
-import { FakeInboxRepository, FakeLedger, FakeUnitOfWork } from './messagingFakes';
+import { FakeInboxRepository, FakeLedger, FakeOutboxRepository, FakeUnitOfWork } from './messagingFakes';
 
 let repo: FakeInboxRepository;
 let ledger: FakeLedger;
@@ -19,7 +19,7 @@ const S = INBOX_EVENT_STATUS;
 beforeEach(() => {
   repo = new FakeInboxRepository();
   ledger = new FakeLedger();
-  processor = new InboxProcessor(new FakeUnitOfWork() as never, repo as never, ledger.registry as never);
+  processor = new InboxProcessor(new FakeUnitOfWork() as never, repo as never, ledger.registry as never, new FakeOutboxRepository() as never);
   service = new InboxService(new FakeUnitOfWork() as never, repo as never, ledger.registry as never, processor);
 });
 
@@ -72,7 +72,11 @@ describe('out-of-order messages', () => {
 
     assert.deepEqual(
       repo.events.map((event) => [event.eventId, event.status]),
-      [['late', S.APPLIED], ['later', S.APPLIED], ['first', S.APPLIED]],
+      [
+        ['late', S.APPLIED],
+        ['later', S.APPLIED],
+        ['first', S.APPLIED],
+      ],
     );
     assert.deepEqual([...ledger.applied], ['first', 'late', 'later']);
   });

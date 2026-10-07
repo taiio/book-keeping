@@ -8,3 +8,4 @@ export * from './backoff';
 export * from './hash';
 export * from './outcome';
 export * from './identifier';
+export * from './deadLetter';

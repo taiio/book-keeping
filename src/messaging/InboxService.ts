@@ -28,8 +28,9 @@ export class InboxService {
 
   async ingest<TPayload>(kind: InboxEventKindId, envelope: InboxEnvelope<TPayload>): Promise<InboxEventStatusId> {
     assertPresent(envelope.eventId, 'eventId');
-
-    if (envelope.eventId.length > MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH) throw new ValidationError(`eventId exceeds ${MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH} characters`);
+    console.log(`InboxService.ingest: kind=${kind}, eventId=${envelope.eventId}, source=${envelope.source ?? 'null'}`);
+    if (envelope.eventId.length > MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH)
+      throw new ValidationError(`eventId exceeds ${MESSAGING_LIMITS.EVENT_ID_MAX_LENGTH} characters`);
 
     const handler = this.registry.get(kind);
 
@@ -47,7 +48,7 @@ export class InboxService {
         tx,
       ),
     );
-
+    console.log(`received event ${envelope.eventId} of kind ${kind}: created=${received.created}, conflict=${received.conflict}, status=${received.event.status}`);
     if (received.conflict) throw new IdempotencyConflictError(envelope.eventId, 'event id redelivered with a different payload');
 
     if (!received.created && received.event.status !== INBOX_EVENT_STATUS.PENDING) return received.event.status;

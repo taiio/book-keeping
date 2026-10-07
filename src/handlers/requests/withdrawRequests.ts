@@ -22,10 +22,16 @@ function findByToken(journalTransactions: JournalTransaction[], idempotencyToken
 
 function senderRequests(withdraw: Withdraw, senders: JournalTransaction[]): TransitionRequest[] {
   return withdraw.sender.map((sender) => {
-    const legs: LedgerLeg[] = [{ item: toLegItem(sender.account!, sender.assetTicker), amount: sender.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT }];
+    const legs: LedgerLeg[] = [
+      { item: toLegItem(sender.account!, sender.assetTicker), amount: sender.quantity, purpose: BOOK_POSTING_PURPOSE.AMOUNT },
+    ];
 
     if (isFeePaidBy(withdraw.fee, sender)) {
-      legs.push({ item: toLegItem(withdraw.fee.account, withdraw.fee.assetTicker), amount: withdraw.fee.quantity, purpose: BOOK_POSTING_PURPOSE.FEE });
+      legs.push({
+        item: toLegItem(withdraw.fee.account, withdraw.fee.assetTicker),
+        amount: withdraw.fee.quantity,
+        purpose: BOOK_POSTING_PURPOSE.FEE,
+      });
     }
 
     return { journalTransaction: findByToken(senders, sender.idempotencyToken, 'Sender'), targetStateId: withdraw.transactionStateId, legs };

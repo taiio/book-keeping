@@ -2,7 +2,6 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { TransitionNotReadyError } from '../common/errors';
-import { UnitOfWork } from '../common/UnitOfWork';
 import { BLOCKCHAIN_TRANSACTION_STATE_ID, EXCEPTION_STATE_IDS, TRANSACTION_TYPE, TRANSITION_OUTCOME } from '../constants';
 import { aggregateOutcome, deterministicUuid } from '../helpers';
 import { ConservationVerifier } from '../ledger/ConservationVerifier';
@@ -15,18 +14,12 @@ import { buildBlockchainRequests } from './requests/blockchainRequests';
 @singleton()
 @autoInjectable()
 export class BlockchainEventHandler {
-  private readonly unitOfWork: UnitOfWork;
   private readonly ledgerPipeline: LedgerPipeline;
   private readonly conservationVerifier: ConservationVerifier;
 
-  constructor(unitOfWork?: UnitOfWork, ledgerPipeline?: LedgerPipeline, conservationVerifier?: ConservationVerifier) {
-    this.unitOfWork = unitOfWork!;
+  constructor(ledgerPipeline?: LedgerPipeline, conservationVerifier?: ConservationVerifier) {
     this.ledgerPipeline = ledgerPipeline!;
     this.conservationVerifier = conservationVerifier!;
-  }
-
-  handle(payload: BlockchainMessagePayload): Promise<TransitionResult[]> {
-    return this.unitOfWork.execute((tx) => this.applyInTransaction(payload, tx));
   }
 
   async applyInTransaction(payload: BlockchainMessagePayload, tx: Transaction): Promise<TransitionResult[]> {
@@ -53,15 +46,27 @@ export class BlockchainEventHandler {
 
     if (byHash.length > 0) return byHash;
 
-    const outgoingTokens = [...payload.senders.map((sender) => sender.idempotencyToken), payload.networkFee.idempotencyToken].filter((token): token is string => !!token);
+    const outgoingTokens = [...payload.senders.map((sender) => sender.idempotencyToken), payload.networkFee.idempotencyToken].filter(
+      (token): token is string => !!token,
+    );
     const outgoing = await this.ledgerPipeline.findByIdempotencyTokens(outgoingTokens, tx);
 
     if (outgoing.length > 0) {
-      throw new TransitionNotReadyError(payload.transactionHash, null, payload.status, 'a system withdraw matches this event but its transaction hash is not stored yet');
+      throw new TransitionNotReadyError(
+        payload.transactionHash,
+        null,
+        payload.status,
+        'a system withdraw matches this event but its transaction hash is not stored yet',
+      );
     }
 
     if (payload.status !== BLOCKCHAIN_TRANSACTION_STATE_ID.CONFIRMING) {
-      throw new TransitionNotReadyError(payload.transactionHash, null, payload.status, 'no journal transaction exists yet and only CONFIRMING can start a deposit');
+      throw new TransitionNotReadyError(
+        payload.transactionHash,
+        null,
+        payload.status,
+        'no journal transaction exists yet and only CONFIRMING can start a deposit',
+      );
     }
 
     return this.createDepositJournalTransactions(payload, tx);

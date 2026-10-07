@@ -31,5 +31,7 @@ export function bookParamsForRef(item: LegItem, ref: BookRef, createdBy?: number
 }
 
 export function bookKeyString(params: BookParams): string {
-  return [params.clientId, params.accountId, params.assetTypeId, params.walletTypeId, params.bookPurposeId, params.transactionStateId ?? 'none'].join('|');
+  return [params.clientId, params.accountId, params.assetTypeId, params.walletTypeId, params.bookPurposeId, params.transactionStateId ?? 'none'].join(
+    '|',
+  );
 }

@@ -7,14 +7,36 @@ import { amountLeg, feeLeg, HAPPY_PATH, netByBook, playWithdraw, withdrawHolding
 
 const S = TRANSACTION_STATE;
 
-const plan = (targetStateId: number, currentStateId: number | null, holdings = withdrawHoldings(currentStateId ?? 0), legs = [amountLeg('1000'), feeLeg('8')], consumedFee?: string) =>
-  planTransition({ journalTransactionId: '1', transactionTypeId: TRANSACTION_TYPE.WITHDRAW, currentStateId, targetStateId, legs, holdings, consumedFee });
+const plan = (
+  targetStateId: number,
+  currentStateId: number | null,
+  holdings = withdrawHoldings(currentStateId ?? 0),
+  legs = [amountLeg('1000'), feeLeg('8')],
+  consumedFee?: string,
+) =>
+  planTransition({
+    journalTransactionId: '1',
+    transactionTypeId: TRANSACTION_TYPE.WITHDRAW,
+    currentStateId,
+    targetStateId,
+    legs,
+    holdings,
+    consumedFee,
+  });
 
 describe('forward planning', () => {
   it('reserves amount and fee when entering AUTHORIZING', () => {
     const { plans } = playWithdraw([S.AUTHORIZING.id]);
 
-    assert.deepEqual(netByBook(plans), new Map([['1/USDT/5', -1000n], ['1/USDT/1', 1000n], ['2/ETH/5', -10n], ['2/ETH/1', 10n]]));
+    assert.deepEqual(
+      netByBook(plans),
+      new Map([
+        ['1/USDT/5', -1000n],
+        ['1/USDT/1', 1000n],
+        ['2/ETH/5', -10n],
+        ['2/ETH/1', 10n],
+      ]),
+    );
   });
 
   it('settles the real fee and returns the unspent estimation at CONFIRMED', () => {
@@ -23,7 +45,10 @@ describe('forward planning', () => {
 
     assert.deepEqual(
       fee.map((posting) => [posting.to.transactionStateId, posting.amount]),
-      [[null, '8'], [S.CONFIRMED.id, '2']],
+      [
+        [null, '8'],
+        [S.CONFIRMED.id, '2'],
+      ],
     );
     assert.equal(planned.find((posting) => posting.item.accountId === 1)!.amount, '1000');
   });
@@ -33,15 +58,29 @@ describe('forward planning', () => {
     const confirmed = plan(S.CONFIRMED.id, S.CONFIRMING.id, withdrawHoldings(S.CONFIRMING.id));
     const net = netByBook([...plans, confirmed]);
 
-    assert.deepEqual(net, new Map([['1/USDT/5', -1000n], ['1/USDT/external', 1000n], ['2/ETH/5', -8n], ['2/ETH/external', 8n]]));
+    assert.deepEqual(
+      net,
+      new Map([
+        ['1/USDT/5', -1000n],
+        ['1/USDT/external', 1000n],
+        ['2/ETH/5', -8n],
+        ['2/ETH/external', 8n],
+      ]),
+    );
   });
 
   it('rejects an amount that differs from what is held', () => {
-    assert.throws(() => plan(S.AUTHORIZED.id, S.AUTHORIZING.id, withdrawHoldings(S.AUTHORIZING.id), [amountLeg('999'), feeLeg('10')]), AmountMismatchError);
+    assert.throws(
+      () => plan(S.AUTHORIZED.id, S.AUTHORIZING.id, withdrawHoldings(S.AUTHORIZING.id), [amountLeg('999'), feeLeg('10')]),
+      AmountMismatchError,
+    );
   });
 
   it('rejects a real fee above the estimation', () => {
-    assert.throws(() => plan(S.CONFIRMED.id, S.CONFIRMING.id, withdrawHoldings(S.CONFIRMING.id), [amountLeg('1000'), feeLeg('11')]), FeeExceedsEstimationError);
+    assert.throws(
+      () => plan(S.CONFIRMED.id, S.CONFIRMING.id, withdrawHoldings(S.CONFIRMING.id), [amountLeg('1000'), feeLeg('11')]),
+      FeeExceedsEstimationError,
+    );
   });
 
   it('accepts a lower fee on intermediate steps and keeps moving the whole estimation', () => {
@@ -60,7 +99,15 @@ describe('closing (REJECTED / FAILED)', () => {
     it(`state ${from} -> ${target} returns amount and fee to CONFIRMED in one pair each`, () => {
       const planned = plan(target, from, withdrawHoldings(from), []);
 
-      assert.deepEqual(netByBook([planned]), new Map([[`1/USDT/${from}`, -1000n], ['1/USDT/5', 1000n], [`2/ETH/${from}`, -10n], ['2/ETH/5', 10n]]));
+      assert.deepEqual(
+        netByBook([planned]),
+        new Map([
+          [`1/USDT/${from}`, -1000n],
+          ['1/USDT/5', 1000n],
+          [`2/ETH/${from}`, -10n],
+          ['2/ETH/5', 10n],
+        ]),
+      );
       assert.equal(planned.length, 2);
     });
   }
@@ -70,7 +117,13 @@ describe('closing (REJECTED / FAILED)', () => {
     const { plans } = playWithdraw(HAPPY_PATH);
     const net = netByBook([...plans, planned]);
 
-    assert.deepEqual(net, new Map([['2/ETH/5', -8n], ['2/ETH/external', 8n]]));
+    assert.deepEqual(
+      net,
+      new Map([
+        ['2/ETH/5', -8n],
+        ['2/ETH/external', 8n],
+      ]),
+    );
   });
 
   it('FAILED before mining ignores a reported fee (nothing was spent)', () => {

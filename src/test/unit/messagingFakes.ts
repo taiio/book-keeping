@@ -3,7 +3,7 @@ import { INBOX_EVENT_STATUS, MESSAGING_LIMITS, TRANSITION_OUTCOME } from '../../
 import type { InboxEventKindId, InboxEventStatusId } from '../../constants';
 import type { FakeEvent } from './types';
 import { nextAttemptAfter } from '../../helpers';
-import type { InboxHandlerOutcome, InboxOutcomeDetail, ReceiveInboxEventParams } from '../../types';
+import type { EnqueueOutboxEventParams, InboxHandlerOutcome, InboxOutcomeDetail, ReceiveInboxEventParams } from '../../types';
 
 export class FakeInboxRepository {
   readonly events: FakeEvent[] = [];
@@ -21,6 +21,8 @@ export class FakeInboxRepository {
       id: String(this.events.length + 1),
       eventId: params.eventId,
       kind: params.kind,
+      orderingKey: params.orderingKey,
+      source: params.source ?? null,
       payload: params.payload,
       payloadHash: params.payloadHash,
       status: INBOX_EVENT_STATUS.PENDING,
@@ -42,7 +44,9 @@ export class FakeInboxRepository {
   }
 
   async findPending(limit: number, dueBefore?: Date) {
-    return this.events.filter((event) => event.status === INBOX_EVENT_STATUS.PENDING && (!dueBefore || event.nextAttemptAt <= dueBefore)).slice(0, limit);
+    return this.events
+      .filter((event) => event.status === INBOX_EVENT_STATUS.PENDING && (!dueBefore || event.nextAttemptAt <= dueBefore))
+      .slice(0, limit);
   }
 
   async markOutcome(event: FakeEvent, status: InboxEventStatusId, detail: InboxOutcomeDetail) {
@@ -60,6 +64,16 @@ export class FakeInboxRepository {
   async park(event: FakeEvent, reason: string) {
     event.lastError = reason;
     event.nextAttemptAt = new Date(Date.now() + MESSAGING_LIMITS.PARKED_RETRY_MS);
+  }
+}
+
+export class FakeOutboxRepository {
+  readonly enqueued: EnqueueOutboxEventParams[] = [];
+
+  async enqueue(params: EnqueueOutboxEventParams) {
+    this.enqueued.push(params);
+
+    return {};
   }
 }
 

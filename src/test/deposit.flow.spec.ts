@@ -7,9 +7,10 @@ import { sequelize } from '../config/database';
 import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import type { BlockchainMessagePayload } from '../types';
+import { direct } from './support/direct';
 
 async function main() {
-  const blockchainEventHandler = container.resolve(BlockchainEventHandler);
+  const blockchainEventHandler = direct(container.resolve(BlockchainEventHandler));
 
   {
     const payload: BlockchainMessagePayload = {

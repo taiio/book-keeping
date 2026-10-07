@@ -51,7 +51,9 @@ export class OutboxRelay {
         await this.unitOfWork.execute((tx) => this.outboxEventRepository.markPublished(event.id, tx));
         summary.published += 1;
       } catch (error) {
-        await this.unitOfWork.execute((tx) => this.outboxEventRepository.recordFailure(event.id, errorMessage(error), !(error instanceof LedgerError) || error.retryable, tx));
+        await this.unitOfWork.execute((tx) =>
+          this.outboxEventRepository.recordFailure(event.id, errorMessage(error), !(error instanceof LedgerError) || error.retryable, tx),
+        );
         summary.failed += 1;
       }
     }

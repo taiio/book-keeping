@@ -77,7 +77,10 @@ export class BookPostingRepository {
 
     if (totals.size === 0) return [];
 
-    const books: Book[] = await Book.findAll({ where: { id: Array.from(new Set(Array.from(totals.values(), (total) => total.bookId))) }, transaction: tx });
+    const books: Book[] = await Book.findAll({
+      where: { id: Array.from(new Set(Array.from(totals.values(), (total) => total.bookId))) },
+      transaction: tx,
+    });
     const bookById = new Map(books.map((book) => [book.id, book]));
 
     const holdings: Holding[] = [];

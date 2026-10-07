@@ -25,7 +25,8 @@ function assetTypeByTicker(holdings: readonly Holding[], context: string): Map<s
   for (const { item } of holdings) {
     const known = types.get(item.assetTicker);
 
-    if (known !== undefined && known !== item.assetTypeId) throw new ConservationError(`${context}, ambiguous asset ticker`, item.assetTicker, 0n, 0n);
+    if (known !== undefined && known !== item.assetTypeId)
+      throw new ConservationError(`${context}, ambiguous asset ticker`, item.assetTicker, 0n, 0n);
 
     types.set(item.assetTicker, item.assetTypeId);
   }
@@ -57,6 +58,7 @@ export function assertSettlementBalanced(
     const sentTotal = sent.get(assetTypeId) ?? 0n;
     const receivedTotal = (credited.get(assetTypeId) ?? 0n) + (external.get(assetTypeId) ?? 0n);
 
-    if (sentTotal !== receivedTotal) throw new ConservationError(context, tickerByType.get(assetTypeId) ?? String(assetTypeId), sentTotal, receivedTotal);
+    if (sentTotal !== receivedTotal)
+      throw new ConservationError(context, tickerByType.get(assetTypeId) ?? String(assetTypeId), sentTotal, receivedTotal);
   }
 }

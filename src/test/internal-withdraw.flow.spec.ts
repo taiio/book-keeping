@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { container } from '../config/container';
+import { container } from 'tsyringe';
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { sequelize } from '../config/database';
@@ -7,6 +7,7 @@ import { TRANSACTION_STATE, TRANSACTION_TYPE, OUTBOX_EVENT_TYPE } from '../const
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { OutboxRelay } from '../messaging/OutboxRelay';
+import { direct } from './support/direct';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
 import type { BlockchainMessagePayload, Withdraw } from '../types';
@@ -20,13 +21,13 @@ const mockSubmitter: IBlockchainSubmitter = {
 
 async function main() {
   container.registerInstance(BLOCKCHAIN_SUBMITTER, mockSubmitter);
-  const systemTransactionHandler = container.resolve(SystemTransactionHandler);
-  const blockchainEventHandler = container.resolve(BlockchainEventHandler);
+  const systemTransactionHandler = direct(container.resolve(SystemTransactionHandler));
+  const blockchainEventHandler = direct(container.resolve(BlockchainEventHandler));
   const uuidToken = randomUUID();
-  const senderAddress = randomBytes(20).toString('hex');
-  const recipentAddress1 = randomBytes(20).toString('hex');
-  const recipentAddress2 = randomBytes(20).toString('hex');
-  const feeAddress = randomBytes(20).toString('hex');
+  const senderAddress = '66f83428e0f1dd12d40933d9ed081bab3';
+  const recipentAddress1 = '66f83428e0f1dd12d40933d9ed081bab4';
+  const recipentAddress2 = '66f83428e0f1dd12d40933d9ed081bab5';
+  const feeAddress = '66f83428e0f1dd12d40933d9ed081bab6';
   const idempotencySender = randomUUID();
   const idempotencyRecipent1 = randomUUID();
   const idempotencyRecipent2 = randomUUID();

@@ -4,6 +4,8 @@ export interface FakeEvent {
   id: string;
   eventId: string;
   kind: InboxEventKindId;
+  orderingKey: string;
+  source: string | null;
   payload: any;
   payloadHash: string;
   status: InboxEventStatusId;

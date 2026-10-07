@@ -7,7 +7,6 @@ import { BLOCKCHAIN_TRANSACTION_STATE_ID, TRANSACTION_STATE, TRANSACTION_TYPE, T
 import type { TransitionOutcome } from '../../constants';
 import { BlockchainEventHandler } from '../../handlers/BlockchainEventHandler';
 import type { BlockchainMessagePayload } from '../../types';
-import { FakeUnitOfWork } from './messagingFakes';
 
 const HASH = 'a'.repeat(64);
 const SENDER_TOKEN = '1c7a3d2f-9b55-4e2c-8d66-4b2e8f0a31d3';
@@ -19,7 +18,13 @@ const payload = (status: BlockchainMessagePayload['status']): BlockchainMessageP
   status,
   senders: [{ idempotencyToken: SENDER_TOKEN, address: 'a', assetTicker: 'USDT', quantity: '100', account }],
   recipients: [
-    { idempotencyToken: '3e9c5f4b-1d77-4a4e-8f88-6d4a0b2c53f5', address: 'x', assetTicker: 'USDT', quantity: '60', account: { ...account, accountId: 2 } },
+    {
+      idempotencyToken: '3e9c5f4b-1d77-4a4e-8f88-6d4a0b2c53f5',
+      address: 'x',
+      assetTicker: 'USDT',
+      quantity: '60',
+      account: { ...account, accountId: 2 },
+    },
     { address: 'outside', assetTicker: 'USDT', quantity: '40' },
   ],
   networkFee: { idempotencyToken: FEE_TOKEN, payerAddress: 'p', assetTicker: 'ETH', quantity: '1' },
@@ -42,14 +47,14 @@ function setup(outcome: TransitionOutcome, verifyFails = false) {
     },
   };
 
-  return { handler: new BlockchainEventHandler(new FakeUnitOfWork() as never, pipeline as never, verifier as never), verified };
+  return { handler: new BlockchainEventHandler(pipeline as never, verifier as never), verified };
 }
 
 describe('BlockchainEventHandler settlement check', () => {
   it('verifies the settlement against the postings after an advancing event was applied', async () => {
     const { handler, verified } = setup(TRANSITION_OUTCOME.APPLIED);
 
-    await handler.handle(payload(TRANSACTION_STATE.CONFIRMING.id));
+    await handler.applyInTransaction(payload(TRANSACTION_STATE.CONFIRMING.id), {} as never);
 
     assert.equal(verified.length, 1);
     assert.deepEqual(verified[0].external, [{ address: 'outside', assetTicker: 'USDT', quantity: '40' }]);
@@ -59,7 +64,7 @@ describe('BlockchainEventHandler settlement check', () => {
     for (const outcome of [TRANSITION_OUTCOME.DUPLICATE, TRANSITION_OUTCOME.STALE]) {
       const { handler, verified } = setup(outcome);
 
-      await handler.handle(payload(TRANSACTION_STATE.CONFIRMED.id));
+      await handler.applyInTransaction(payload(TRANSACTION_STATE.CONFIRMED.id), {} as never);
 
       assert.equal(verified.length, 0);
     }
@@ -68,7 +73,7 @@ describe('BlockchainEventHandler settlement check', () => {
   it('never blocks a failure report', async () => {
     const { handler, verified } = setup(TRANSITION_OUTCOME.APPLIED);
 
-    await handler.handle(payload(BLOCKCHAIN_TRANSACTION_STATE_ID.FAILED));
+    await handler.applyInTransaction(payload(BLOCKCHAIN_TRANSACTION_STATE_ID.FAILED), {} as never);
 
     assert.equal(verified.length, 0);
   });
@@ -76,6 +81,6 @@ describe('BlockchainEventHandler settlement check', () => {
   it('lets a violation abort the whole event', async () => {
     const { handler } = setup(TRANSITION_OUTCOME.APPLIED, true);
 
-    await assert.rejects(() => handler.handle(payload(TRANSACTION_STATE.CONFIRMING.id)), ConservationError);
+    await assert.rejects(() => handler.applyInTransaction(payload(TRANSACTION_STATE.CONFIRMING.id), {} as never), ConservationError);
   });
 });

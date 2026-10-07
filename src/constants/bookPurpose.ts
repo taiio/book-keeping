@@ -10,7 +10,7 @@ export const BOOK_PURPOSE = {
 
   BLOCKCHAIN_EXTERNAL_ACCOUNT: {
     id: 2,
-    code: 'BLOCKCHAIN_EXTERNAL_ACCOUNT',
+    code: 'BLOCKCHIAN_EXTERNAL_ACCOUNT',
     name: 'Blockchain External Account Book',
     description: 'Represents assets or accounts outside the custody ledger, such as external blockchain or settlement accounts.',
   },

@@ -9,3 +9,4 @@ export * from './transaction';
 export * from './planning';
 export * from './messaging';
 export * from './lookup';
+export * from './kafka';

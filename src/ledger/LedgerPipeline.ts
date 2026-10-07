@@ -154,7 +154,7 @@ export class LedgerPipeline {
       stateId = targetStateId;
     }
 
-    return TRANSITION_OUTCOME.APPLIED
+    return TRANSITION_OUTCOME.APPLIED;
   }
 
   private async writeSteps(steps: TransitionStep[], tx: Transaction): Promise<void> {
@@ -230,12 +230,25 @@ export class LedgerPipeline {
     };
 
     await this.outboxEventRepository.enqueue(
-      { aggregate: journalTransaction.idempotencyToken, eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED, stateId: targetStateId, attempt: POSTING_TOKEN.FIRST_ATTEMPT, payload },
+      {
+        aggregate: journalTransaction.idempotencyToken,
+        eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED,
+        stateId: targetStateId,
+        attempt: POSTING_TOKEN.FIRST_ATTEMPT,
+        payload,
+      },
       tx,
     );
   }
 
-  private async postDoubleEntry(step: TransitionStep, planned: PlannedPosting, from: Book, to: Book, firstIndex: number, tx: Transaction): Promise<void> {
+  private async postDoubleEntry(
+    step: TransitionStep,
+    planned: PlannedPosting,
+    from: Book,
+    to: Book,
+    firstIndex: number,
+    tx: Transaction,
+  ): Promise<void> {
     const { journalTransaction, targetStateId } = step;
 
     const common = {

@@ -4,6 +4,7 @@ import { UnsupportedOperationError } from '../common/errors';
 import type { OutboxEventTypeId } from '../constants';
 import type { OutboxEventHandler } from '../ports';
 import { BroadcastOutboxHandler } from './outboxHandlers/BroadcastOutboxHandler';
+import { DeadLetterOutboxHandler } from './outboxHandlers/DeadLetterOutboxHandler';
 import { StateChangedOutboxHandler } from './outboxHandlers/StateChangedOutboxHandler';
 
 @singleton()
@@ -11,8 +12,8 @@ import { StateChangedOutboxHandler } from './outboxHandlers/StateChangedOutboxHa
 export class OutboxHandlerRegistry {
   private readonly handlers: ReadonlyMap<OutboxEventTypeId, OutboxEventHandler>;
 
-  constructor(stateChanged?: StateChangedOutboxHandler, broadcast?: BroadcastOutboxHandler) {
-    const handlers: OutboxEventHandler[] = [stateChanged!, broadcast!];
+  constructor(stateChanged?: StateChangedOutboxHandler, broadcast?: BroadcastOutboxHandler, deadLetter?: DeadLetterOutboxHandler) {
+    const handlers: OutboxEventHandler[] = [stateChanged!, broadcast!, deadLetter!];
 
     this.handlers = new Map(handlers.map((handler) => [handler.type, handler]));
   }

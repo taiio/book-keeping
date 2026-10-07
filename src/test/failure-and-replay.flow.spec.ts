@@ -5,7 +5,17 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { BroadcastRejectedError } from '../common/errors';
 import { sequelize } from '../config/database';
 import { container } from '../config/container';
-import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, INBOX_SOURCE, JOURNAL_TRANSACTION_STATE, OUTBOX_EVENT_TYPE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
+import {
+  BLOCKCHAIN_TRANSACTION_STATE_ID,
+  BOOK_PURPOSE,
+  INBOX_EVENT_KIND,
+  INBOX_EVENT_STATUS,
+  INBOX_SOURCE,
+  JOURNAL_TRANSACTION_STATE,
+  OUTBOX_EVENT_TYPE,
+  TRANSACTION_STATE,
+  TRANSACTION_TYPE,
+} from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { InboxProcessor } from '../messaging/InboxProcessor';
@@ -14,7 +24,9 @@ import { OutboxRelay } from '../messaging/OutboxRelay';
 import { Book, InboxEvent, JournalTransaction } from '../models';
 import { BLOCKCHAIN_SUBMITTER } from '../ports';
 import type { IBlockchainSubmitter } from '../ports';
-import type { AccountIdentity, BlockchainMessagePayload, Withdraw } from '../types';
+import type { AccountIdentity, BlockchainMessagePayload, TransitionResult, Withdraw } from '../types';
+import { direct } from './support/direct';
+import type { DirectHandler } from './support/types';
 
 const S = TRANSACTION_STATE;
 const USDT = { assetTypeId: 1, assetId: 1, ticker: 'USDT' };
@@ -35,7 +47,12 @@ async function amountOf(accountId: number, assetTypeId: number, stateId: number 
   return BigInt(book?.amount ?? '0');
 }
 
-async function fund(blockchain: BlockchainEventHandler, account: AccountIdentity, ticker: string, quantity: string): Promise<void> {
+async function fund(
+  blockchain: DirectHandler<BlockchainMessagePayload, TransitionResult[]>,
+  account: AccountIdentity,
+  ticker: string,
+  quantity: string,
+): Promise<void> {
   const payload: BlockchainMessagePayload = {
     transactionHash: randomBytes(32).toString('hex'),
     status: S.CONFIRMING.id,
@@ -90,8 +107,8 @@ async function main(): Promise<void> {
 
   container.registerInstance(BLOCKCHAIN_SUBMITTER, submitter);
 
-  const system = container.resolve(SystemTransactionHandler);
-  const blockchain = container.resolve(BlockchainEventHandler);
+  const system = direct(container.resolve(SystemTransactionHandler));
+  const blockchain = direct(container.resolve(BlockchainEventHandler));
   const broadcast = async () => {
     const summary = await container.resolve(OutboxRelay).drain(100, [OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED]);
 
@@ -237,7 +254,10 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.SENT.id), 600n);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
 
-    assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) }), INBOX_EVENT_STATUS.APPLIED);
+    assert.equal(
+      await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) }),
+      INBOX_EVENT_STATUS.APPLIED,
+    );
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 600n);
 
     console.log('E. conservation check: ok');
