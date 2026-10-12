@@ -1,8 +1,10 @@
-# Bookkeeping: Architecture Guide
+# Bookkeeping: Database-Centric Architecture Guide
 
-Bookkeeping is a double-entry ledger service for deposits and withdrawals across multiple blockchains. It consumes instructions from internal systems and events from chain indexers over Kafka, turns them into immutable ledger entries, and publishes the results back to Kafka.
+Bookkeeping is a database-centric, double-entry ledger service for deposits and withdrawals across multiple blockchains. The relational database serves as the source of truth for account balances, transaction states, and immutable ledger records. Transaction processing is driven by database reads and writes, with atomic database transactions enforcing ledger consistency.
 
-This document describes how the system is built and how it behaves, with the emphasis on flows and failure cases.
+The service consumes instructions from internal systems and blockchain events from Kafka, processes them through database-backed transaction flows, and publishes the resulting events back to Kafka.
+
+This document describes the system architecture, transaction lifecycle, data model, and failure-handling mechanisms, with an emphasis on database state transitions, transactional consistency, and recovery flows.
 
 ## Design goals
 
