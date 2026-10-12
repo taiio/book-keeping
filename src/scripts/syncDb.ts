@@ -2,7 +2,7 @@ import { sequelize } from '../config/database';
 import { BOOK_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BookPurpose, TransactionState } from '../models';
 import type { LookupDefinition, LookupRow } from '../types';
-import { POST_SYNC_SQL } from './postSyncSql';
+import { runMigrations } from './migrate';
 
 async function seedLookupTable(definitions: readonly LookupDefinition[], upsert: (row: LookupRow) => Promise<unknown>): Promise<void> {
   for (const { id, code, name, description } of definitions) {
@@ -36,6 +36,10 @@ DROP TABLE IF EXISTS public.inbox_event CASCADE;
 
 DROP TABLE IF EXISTS public.outbox_event CASCADE;
 
+DROP TABLE IF EXISTS public.schema_migration CASCADE;
+
+DROP FUNCTION IF EXISTS public.forbid_change() CASCADE;
+
 `;
 
 async function main(): Promise<void> {
@@ -43,17 +47,13 @@ async function main(): Promise<void> {
     console.log('DROP ALL TABLE CASADE');
     await sequelize.query(sql);
 
-    console.log('Syncing database...');
-
     await sequelize.authenticate();
 
-    await sequelize.sync({
-      alter: false,
-    });
+    console.log('Running migrations...');
 
-    for (const statement of POST_SYNC_SQL) {
-      await sequelize.query(statement);
-    }
+    const report = await runMigrations();
+
+    console.log(`Migrations applied: ${report.applied.join(', ') || 'none'}`);
 
     console.log('Database sync completed successfully.');
 
