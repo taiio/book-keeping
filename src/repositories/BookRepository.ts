@@ -1,10 +1,11 @@
-import type { Transaction } from 'sequelize';
+import { Op } from 'sequelize';
+import type { Transaction, WhereOptions } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { InsufficientBalanceError, NotFoundError } from '../common/errors';
 import { BOOK_PURPOSE, HISTORY_EVENT_TYPE, TRANSACTION_STATE } from '../constants';
 import { Book } from '../models';
-import type { BookParams, GetOrCreateBookResult, UpdateBookParams } from '../types';
+import type { BookParams, FindCustodyBooksParams, GetOrCreateBookResult, UpdateBookParams } from '../types';
 import { BookHistoryRepository } from './BookHistoryRepository';
 
 @singleton()
@@ -46,6 +47,30 @@ export class BookRepository {
     }
 
     return { book, created };
+  }
+
+  async findCustodyBooks(params: FindCustodyBooksParams): Promise<Book[]> {
+    const where: WhereOptions = {
+      clientId: params.clientId,
+      accountId: params.accountId,
+      bookPurposeId: BOOK_PURPOSE.CUSTODY_ASSET_ACCOUNT.id,
+      transactionStateId: { [Op.ne]: null },
+    };
+
+    if (params.assets) {
+      Object.assign(where, {
+        [Op.or]: params.assets.map((asset) => ({ assetTypeId: asset.assetTypeId, walletTypeId: asset.walletTypeId })),
+      });
+    }
+
+    return Book.findAll({
+      where,
+      order: [
+        ['assetTypeId', 'ASC'],
+        ['walletTypeId', 'ASC'],
+        ['transactionStateId', 'ASC'],
+      ],
+    });
   }
 
   async lockBookById(bookId: number, tx: Transaction): Promise<Book> {

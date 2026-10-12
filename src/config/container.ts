@@ -16,6 +16,7 @@ import '../repositories/InboxEventRepository';
 import '../repositories/OutboxEventRepository';
 import '../ledger/LedgerPipeline';
 import '../ledger/ConservationVerifier';
+import '../ledger/BalanceService';
 import '../handlers/SystemTransactionHandler';
 import '../handlers/BlockchainEventHandler';
 import '../messaging/InboxService';

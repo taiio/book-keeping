@@ -11,3 +11,4 @@ export * from './messaging';
 export * from './lookup';
 export * from './kafka';
 export * from './migration';
+export * from './balance';

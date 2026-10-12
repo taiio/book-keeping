@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package bookkeeping.v1;
+
+// Read-only balance queries over the custody ledger.
+service BalanceService {
+  // Balances of the requested assets only (one entry per requested asset that has a book).
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+
+  // Balances of every asset the account holds.
+  rpc GetBalances(GetBalancesRequest) returns (GetBalanceResponse);
+}
+
+message AssetRef {
+  int32 asset_type_id = 1;
+  int32 wallet_type_id = 2;
+}
+
+message GetBalanceRequest {
+  int32 client_id = 1;
+  int32 account_id = 2;
+  // At least one, at most 100.
+  repeated AssetRef assets = 3;
+}
+
+message GetBalancesRequest {
+  int32 client_id = 1;
+  int32 account_id = 2;
+}
+
+message AssetBalance {
+  int32 asset_id = 1;
+  int32 asset_type_id = 2;
+  int32 wallet_type_id = 3;
+  string asset_ticker = 4;
+
+  // Custody book in state CONFIRMED only. Integer string, smallest unit.
+  string balance = 5;
+
+  // Sum of all custody books whose transaction state is not null. Integer string, smallest unit.
+  string available_balance = 6;
+}
+
+message GetBalanceResponse {
+  int32 client_id = 1;
+  int32 account_id = 2;
+  repeated AssetBalance balances = 3;
+}
