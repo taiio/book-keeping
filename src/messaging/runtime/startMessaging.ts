@@ -1,4 +1,3 @@
-import { createLogger } from '../../common/logger';
 import { container } from '../../config/container';
 import { env } from '../../config/env';
 import { INBOX_EVENT_KIND, OUTBOX_EVENT_TYPE } from '../../constants';
@@ -18,24 +17,12 @@ import { OutboxRelay } from '../OutboxRelay';
 import { UnconfiguredBlockchainSubmitter } from '../UnconfiguredBlockchainSubmitter';
 import { IntervalWorker } from '../workers/IntervalWorker';
 
-const log = createLogger('messaging');
-
 export async function startMessaging(): Promise<MessagingRuntime> {
   const settings = env.kafka;
   const routes: TopicRoute[] = [
     { topic: settings.systemTopic, kind: INBOX_EVENT_KIND.SYSTEM_TRANSACTION },
     { topic: settings.blockchainTopic, kind: INBOX_EVENT_KIND.BLOCKCHAIN_EVENT },
   ];
-
-  log.info('starting messaging', {
-    brokers: settings.brokers,
-    groupId: settings.groupId,
-    ssl: settings.ssl,
-    sasl: settings.saslMechanism || 'none',
-    routes: routes.map((route) => route.topic),
-    stateChangedTopic: settings.stateChangedTopic,
-    deadLetterTopic: settings.deadLetterTopic,
-  });
 
   const connection = new KafkaConnection(settings);
   const producer = new KafkaProducerClient(connection);
@@ -64,7 +51,7 @@ export async function startMessaging(): Promise<MessagingRuntime> {
   ];
 
   if (container.resolve<IBlockchainSubmitter>(BLOCKCHAIN_SUBMITTER) instanceof UnconfiguredBlockchainSubmitter) {
-    log.warn('no IBlockchainSubmitter registered: the broadcast worker is not started, so withdraws stay SENT until one is registered');
+    console.warn('[messaging] no IBlockchainSubmitter registered: the broadcast worker is not started, so withdraws stay SENT until one is registered');
   } else {
     workers.push(new IntervalWorker('broadcast', () => relay.drain(batchSize, [OUTBOX_EVENT_TYPE.BROADCAST_REQUESTED]), broadcastIntervalMs));
   }
@@ -73,23 +60,13 @@ export async function startMessaging(): Promise<MessagingRuntime> {
 
   for (const worker of workers) worker.start();
 
-  log.info('consumer and workers started', {
-    workers: workers.map((worker) => worker.name),
-    batchSize,
-    inboxIntervalMs,
-    outboxIntervalMs,
-    broadcastIntervalMs,
-  });
+  console.log('[messaging] consumer and workers started');
 
   return {
     async stop() {
-      log.info('stopping messaging');
-
       await consumer.stop();
       await Promise.all(workers.map((worker) => worker.stop()));
       await producer.disconnect();
-
-      log.info('messaging stopped');
     },
   };
 }

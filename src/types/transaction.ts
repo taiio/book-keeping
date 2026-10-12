@@ -60,3 +60,4 @@ export interface SystemTransactionResult {
   senderJournalTransactionIds: string[];
   recipientJournalTransactionIds: string[];
 }
+

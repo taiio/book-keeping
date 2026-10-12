@@ -1,11 +1,8 @@
 import type { Consumer } from 'kafkajs';
 
-import { createLogger } from '../../common/logger';
 import { KafkaConnection } from './KafkaConnection';
 import { KafkaMessageHandler } from './KafkaMessageHandler';
 import { toConsumedMessage } from './consumedMessage';
-
-const log = createLogger('kafka:consumer');
 
 export class KafkaConsumerRunner {
   private readonly consumer: Consumer;
@@ -22,20 +19,14 @@ export class KafkaConsumerRunner {
 
   async start(): Promise<void> {
     await this.consumer.connect();
-    log.info('consumer connected');
-
     await this.consumer.subscribe({ topics: [...this.topics], fromBeginning: this.fromBeginning });
     await this.consumer.run({
       eachMessage: ({ topic, partition, message }) => this.handler.handle(toConsumedMessage(topic, partition, message)),
     });
-
-    log.info('consumer running', { topics: this.topics, fromBeginning: this.fromBeginning });
   }
 
   async stop(): Promise<void> {
     await this.consumer.stop();
     await this.consumer.disconnect();
-
-    log.info('consumer stopped');
   }
 }

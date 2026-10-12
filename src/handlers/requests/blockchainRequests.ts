@@ -64,9 +64,9 @@ function isSeparateFeeJournal(journalTransaction: JournalTransaction, payload: B
 
   return Boolean(
     fee.account &&
-    journalTransaction.transactionTypeId === TRANSACTION_TYPE.WITHDRAW &&
-    journalTransaction.idempotencyToken === fee.idempotencyToken &&
-    journalTransaction.fromAccountId === fee.account.accountId &&
-    !payload.senders.some((sender) => isFeePaidBy(fee, sender)),
+      journalTransaction.transactionTypeId === TRANSACTION_TYPE.WITHDRAW &&
+      journalTransaction.idempotencyToken === fee.idempotencyToken &&
+      journalTransaction.fromAccountId === fee.account.accountId &&
+      !payload.senders.some((sender) => isFeePaidBy(fee, sender)),
   );
 }

@@ -2,8 +2,6 @@ import type { Transaction } from 'sequelize';
 import { autoInjectable, singleton } from 'tsyringe';
 
 import { TransitionNotReadyError } from '../common/errors';
-import { createLogger } from '../common/logger';
-import { stateName, transactionTypeName } from '../common/logLabels';
 import { FEE_CONSUMING_STATES, HISTORY_EVENT_TYPE, OUTBOX_EVENT_TYPE, POSTING_TOKEN, TRANSITION_DECISION, TRANSITION_OUTCOME } from '../constants';
 import type { TransitionOutcome } from '../constants';
 import { bookKeyString, bookParamsForRef, bookPostingIdempotencyToken, compareIdentifiers, negateQuantity } from '../helpers';
@@ -26,8 +24,6 @@ import type {
 import { LedgerStateMachine } from './LedgerStateMachine';
 import { applyPlanToHoldings, planTransition } from './transitionPlanner';
 import { isExceptionState, journalStateForTarget } from './transitionRules';
-
-const log = createLogger('ledger');
 
 @singleton()
 @autoInjectable()
@@ -87,8 +83,6 @@ export class LedgerPipeline {
   }
 
   async processTransition(requests: TransitionRequest[], tx: Transaction): Promise<TransitionResult[]> {
-    log.debug('processing transition batch', { requests: requests.length });
-
     const locked = await this.lockJournalTransactions(requests, tx);
     const steps: TransitionStep[] = [];
     const results: TransitionResult[] = [];
@@ -101,8 +95,6 @@ export class LedgerPipeline {
     }
 
     await this.writeSteps(steps, tx);
-
-    log.debug('transition batch done', { requests: requests.length, steps: steps.length, outcomes: results.map((result) => result.outcome) });
 
     return results;
   }
@@ -137,28 +129,9 @@ export class LedgerPipeline {
       journalTransactionState: journalTransaction.journalTransactionState,
     });
 
-    const subject = {
-      journalTransactionId: journalTransaction.id,
-      idempotencyToken: journalTransaction.idempotencyToken,
-      type: transactionTypeName(journalTransaction.transactionTypeId),
-      current: stateName(currentStateId),
-      target: stateName(request.targetStateId),
-    };
-
-    if (decision.kind === TRANSITION_DECISION.DUPLICATE) {
-      log.debug('transition skipped: already applied', subject);
-      return TRANSITION_OUTCOME.DUPLICATE;
-    }
-
-    if (decision.kind === TRANSITION_DECISION.STALE) {
-      log.info('transition skipped: the ledger is already past this state', subject);
-      return TRANSITION_OUTCOME.STALE;
-    }
-
-    if (decision.kind === TRANSITION_DECISION.EARLY) {
-      log.warn('transition not ready: an earlier state has not been applied yet', subject);
-      throw new TransitionNotReadyError(journalTransaction.id, currentStateId, request.targetStateId);
-    }
+    if (decision.kind === TRANSITION_DECISION.DUPLICATE) return TRANSITION_OUTCOME.DUPLICATE;
+    if (decision.kind === TRANSITION_DECISION.STALE) return TRANSITION_OUTCOME.STALE;
+    if (decision.kind === TRANSITION_DECISION.EARLY) throw new TransitionNotReadyError(journalTransaction.id, currentStateId, request.targetStateId);
 
     const via = decision.kind === TRANSITION_DECISION.CATCH_UP ? decision.via : [];
     let holdings = await this.bookPostingRepository.findHoldings(journalTransaction.id, tx);
@@ -181,15 +154,7 @@ export class LedgerPipeline {
       stateId = targetStateId;
     }
 
-    log.debug('transition planned', {
-      ...subject,
-      via: via.map(stateName),
-      postings: steps
-        .filter((step) => step.journalTransaction.id === journalTransaction.id)
-        .reduce((total, step) => total + step.planned.length * 2, 0),
-    });
-
-    return TRANSITION_OUTCOME.APPLIED;
+    return TRANSITION_OUTCOME.APPLIED
   }
 
   private async writeSteps(steps: TransitionStep[], tx: Transaction): Promise<void> {
@@ -200,8 +165,6 @@ export class LedgerPipeline {
       Array.from(books.values(), (book) => book.id),
       tx,
     );
-
-    log.debug('books locked', { books: lockedBooks.size });
 
     for (const step of steps) {
       await this.recordState(step, tx);
@@ -215,15 +178,6 @@ export class LedgerPipeline {
         await this.postDoubleEntry(step, planned, from, to, index, tx);
         index += POSTING_TOKEN.POSTINGS_PER_ENTRY;
       }
-
-      log.info('state recorded', {
-        journalTransactionId: step.journalTransaction.id,
-        idempotencyToken: step.journalTransaction.idempotencyToken,
-        type: transactionTypeName(step.journalTransaction.transactionTypeId),
-        state: stateName(step.targetStateId),
-        synthetic: step.synthetic,
-        entries: step.planned.length,
-      });
     }
   }
 
@@ -276,25 +230,12 @@ export class LedgerPipeline {
     };
 
     await this.outboxEventRepository.enqueue(
-      {
-        aggregate: journalTransaction.idempotencyToken,
-        eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED,
-        stateId: targetStateId,
-        attempt: POSTING_TOKEN.FIRST_ATTEMPT,
-        payload,
-      },
+      { aggregate: journalTransaction.idempotencyToken, eventType: OUTBOX_EVENT_TYPE.STATE_CHANGED, stateId: targetStateId, attempt: POSTING_TOKEN.FIRST_ATTEMPT, payload },
       tx,
     );
   }
 
-  private async postDoubleEntry(
-    step: TransitionStep,
-    planned: PlannedPosting,
-    from: Book,
-    to: Book,
-    firstIndex: number,
-    tx: Transaction,
-  ): Promise<void> {
+  private async postDoubleEntry(step: TransitionStep, planned: PlannedPosting, from: Book, to: Book, firstIndex: number, tx: Transaction): Promise<void> {
     const { journalTransaction, targetStateId } = step;
 
     const common = {
@@ -312,15 +253,6 @@ export class LedgerPipeline {
         attempt: POSTING_TOKEN.FIRST_ATTEMPT,
         index,
       });
-
-    log.debug('double entry', {
-      journalTransactionId: journalTransaction.id,
-      state: stateName(targetStateId),
-      fromBookId: from.id,
-      toBookId: to.id,
-      amount: planned.amount,
-      purposeId: planned.purpose,
-    });
 
     await this.bookPostingRepository.createBookPosting(
       { ...common, bookId: from.id, amount: negateQuantity(planned.amount), idempotencyToken: token(firstIndex), lockedBook: from },

@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 
 import { UnitOfWork } from '../common/UnitOfWork';
-import { createLogger, errorMeta } from '../common/logger';
 import { container } from '../config/container';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
@@ -42,24 +41,20 @@ const TOKENS: ReadonlyArray<readonly [string, Token]> = [
   [`token ${BLOCKCHAIN_SUBMITTER}`, BLOCKCHAIN_SUBMITTER],
 ];
 
-const log = createLogger('test:di');
-
 function main(): void {
   let failures = 0;
 
   for (const [name, token] of TOKENS) {
     try {
       container.resolve(token as never);
-      log.info('resolved', { dependency: name });
+      console.log(`ok     ${name}`);
     } catch (error) {
       failures += 1;
-      log.error('cannot resolve', { dependency: name, ...errorMeta(error, { stack: false }) });
+      console.log(`FAILED ${name}\n${error instanceof Error ? error.message : String(error)}\n`);
     }
   }
 
-  if (failures === 0) log.info('DI graph resolves');
-  else log.error('DI graph is broken', { unresolved: failures });
-
+  console.log(failures === 0 ? '\nDI graph resolves' : `\n${failures} dependency(ies) cannot be resolved`);
   process.exitCode = failures === 0 ? 0 : 1;
 }
 

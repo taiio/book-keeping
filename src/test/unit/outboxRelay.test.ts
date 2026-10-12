@@ -52,12 +52,7 @@ describe('OutboxRelay', () => {
     );
 
     assert.deepEqual(await relay.runOnce(), { claimed: 4, published: 1, failed: 3 });
-    assert.deepEqual(log, [
-      ['failure', '1', true],
-      ['failure', '2', true],
-      ['failure', '3', false],
-      ['published', '4'],
-    ]);
+    assert.deepEqual(log, [['failure', '1', true], ['failure', '2', true], ['failure', '3', false], ['published', '4']]);
   });
 
   it('drain keeps claiming until nothing is left, so no event waits behind a full batch', async () => {

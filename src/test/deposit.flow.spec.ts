@@ -3,14 +3,11 @@ import { container } from 'tsyringe';
 
 import { randomBytes, randomInt, randomUUID } from 'crypto';
 
-import { createLogger, errorMeta } from '../common/logger';
 import { sequelize } from '../config/database';
 import { BOOK_POSTING_PURPOSE, TRANSACTION_STATE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import type { BlockchainMessagePayload } from '../types';
 import { direct } from './support/direct';
-
-const log = createLogger('test:deposit');
 
 async function main() {
   const blockchainEventHandler = direct(container.resolve(BlockchainEventHandler));
@@ -59,11 +56,11 @@ async function main() {
     await blockchainEventHandler.handle(payload);
     await blockchainEventHandler.handle({ ...payload, status: TRANSACTION_STATE.CONFIRMED.id });
 
-    log.info('Deposit flow completed');
+    console.log('Deposit flow completed');
   }
   await sequelize.close();
 }
 main().catch((error) => {
-  log.error('flow failed', errorMeta(error));
+  console.error(error);
   process.exit(1);
 });

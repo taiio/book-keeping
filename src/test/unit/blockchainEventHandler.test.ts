@@ -18,13 +18,7 @@ const payload = (status: BlockchainMessagePayload['status']): BlockchainMessageP
   status,
   senders: [{ idempotencyToken: SENDER_TOKEN, address: 'a', assetTicker: 'USDT', quantity: '100', account }],
   recipients: [
-    {
-      idempotencyToken: '3e9c5f4b-1d77-4a4e-8f88-6d4a0b2c53f5',
-      address: 'x',
-      assetTicker: 'USDT',
-      quantity: '60',
-      account: { ...account, accountId: 2 },
-    },
+    { idempotencyToken: '3e9c5f4b-1d77-4a4e-8f88-6d4a0b2c53f5', address: 'x', assetTicker: 'USDT', quantity: '60', account: { ...account, accountId: 2 } },
     { address: 'outside', assetTicker: 'USDT', quantity: '40' },
   ],
   networkFee: { idempotencyToken: FEE_TOKEN, payerAddress: 'p', assetTicker: 'ETH', quantity: '1' },

@@ -1,10 +1,7 @@
 import type { Producer } from 'kafkajs';
 
-import { createLogger } from '../../common/logger';
 import type { OutboundMessage } from '../../types';
 import { KafkaConnection } from './KafkaConnection';
-
-const log = createLogger('kafka:producer');
 
 export class KafkaProducerClient {
   private readonly producer: Producer;
@@ -13,19 +10,15 @@ export class KafkaProducerClient {
     this.producer = connection.createProducer();
   }
 
-  async connect(): Promise<void> {
-    await this.producer.connect();
-    log.info('producer connected');
+  connect(): Promise<void> {
+    return this.producer.connect();
   }
 
-  async disconnect(): Promise<void> {
-    await this.producer.disconnect();
-    log.info('producer disconnected');
+  disconnect(): Promise<void> {
+    return this.producer.disconnect();
   }
 
   async send(topic: string, message: OutboundMessage): Promise<void> {
     await this.producer.send({ topic, messages: [{ key: message.key, value: message.value, headers: message.headers }] });
-
-    log.debug('message sent', { topic, key: message.key });
   }
 }

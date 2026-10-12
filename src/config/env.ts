@@ -24,20 +24,8 @@ function readList(name: string, defaultValue: readonly string[]): readonly strin
     .filter((item) => item.length > 0);
 }
 
-const nodeEnv = readString('NODE_ENV', 'development');
-const isProduction = nodeEnv === 'production';
-
 export const env = {
-  nodeEnv,
-
-  log: {
-    // error | warn | info | http | verbose | debug | silly | silent
-    level: readString('LOG_LEVEL', isProduction ? 'info' : 'debug').toLowerCase(),
-    // Coloured, human-readable output. Defaults to on outside production.
-    colorize: readBool('LOG_COLORIZE', !isProduction),
-    // One JSON object per line (for Loki / ELK / CloudWatch). Defaults to on in production.
-    json: readBool('LOG_JSON', isProduction),
-  },
+  nodeEnv: readString('NODE_ENV', 'development'),
 
   db: {
     host: readString('DB_HOST', 'localhost'),
@@ -45,7 +33,7 @@ export const env = {
     name: readString('DB_NAME', 'bookkeeping'),
     user: readString('DB_USER', 'postgres'),
     password: readString('DB_PASSWORD', 'postgres'),
-    logging: readString('DB_LOGGING', 'false') === 'true',
+    logging: readString('DB_LOGGING', 'true') === 'true',
 
     poolMax: readInt('DB_POOL_MAX', 20),
     poolMin: readInt('DB_POOL_MIN', 2),

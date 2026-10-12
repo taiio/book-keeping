@@ -111,14 +111,7 @@ describe('DeadLetterOutboxHandler', () => {
     const sent: OutboundMessage[] = [];
     const handler = new DeadLetterOutboxHandler({ publish: async (message: OutboundMessage) => void sent.push(message) });
 
-    await handler.handle({
-      id: '9',
-      aggregate: 'evt-1',
-      eventType: OUTBOX_EVENT_TYPE.DEAD_LETTERED,
-      stateId: DEAD_LETTER_STATE_ID.INBOX,
-      attempt: 1,
-      payload: deadLetter,
-    });
+    await handler.handle({ id: '9', aggregate: 'evt-1', eventType: OUTBOX_EVENT_TYPE.DEAD_LETTERED, stateId: DEAD_LETTER_STATE_ID.INBOX, attempt: 1, payload: deadLetter });
 
     assert.equal(sent.length, 1);
     assert.equal(sent[0].key, 'key-1');

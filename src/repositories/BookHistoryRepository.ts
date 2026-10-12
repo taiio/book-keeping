@@ -20,4 +20,5 @@ export class BookHistoryRepository {
       { transaction: tx },
     );
   }
+
 }

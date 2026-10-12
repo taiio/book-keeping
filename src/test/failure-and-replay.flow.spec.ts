@@ -3,20 +3,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 
 import { BroadcastRejectedError } from '../common/errors';
-import { createLogger, errorMeta } from '../common/logger';
 import { sequelize } from '../config/database';
 import { container } from '../config/container';
-import {
-  BLOCKCHAIN_TRANSACTION_STATE_ID,
-  BOOK_PURPOSE,
-  INBOX_EVENT_KIND,
-  INBOX_EVENT_STATUS,
-  INBOX_SOURCE,
-  JOURNAL_TRANSACTION_STATE,
-  OUTBOX_EVENT_TYPE,
-  TRANSACTION_STATE,
-  TRANSACTION_TYPE,
-} from '../constants';
+import { BLOCKCHAIN_TRANSACTION_STATE_ID, BOOK_PURPOSE, INBOX_EVENT_KIND, INBOX_EVENT_STATUS, INBOX_SOURCE, JOURNAL_TRANSACTION_STATE, OUTBOX_EVENT_TYPE, TRANSACTION_STATE, TRANSACTION_TYPE } from '../constants';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
 import { InboxProcessor } from '../messaging/InboxProcessor';
@@ -48,12 +37,7 @@ async function amountOf(accountId: number, assetTypeId: number, stateId: number 
   return BigInt(book?.amount ?? '0');
 }
 
-async function fund(
-  blockchain: DirectHandler<BlockchainMessagePayload, TransitionResult[]>,
-  account: AccountIdentity,
-  ticker: string,
-  quantity: string,
-): Promise<void> {
+async function fund(blockchain: DirectHandler<BlockchainMessagePayload, TransitionResult[]>, account: AccountIdentity, ticker: string, quantity: string): Promise<void> {
   const payload: BlockchainMessagePayload = {
     transactionHash: randomBytes(32).toString('hex'),
     status: S.CONFIRMING.id,
@@ -92,8 +76,6 @@ function scenario(user: AccountIdentity, feePayer: AccountIdentity) {
 
   return { withdraw, chain, transactionHash, uuidToken };
 }
-
-const log = createLogger('test:failure-and-replay');
 
 async function main(): Promise<void> {
   const hashes = new Map<string, string>();
@@ -155,7 +137,7 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.AUTHORIZED.id), 0n);
     assert.equal(await amountOf(feePayer.accountId, ETH.assetTypeId, S.AUTHORIZED.id), 0n);
 
-    log.info('A. rejected + replay: ok');
+    console.log('A. rejected + replay: ok');
   }
 
   {
@@ -172,7 +154,7 @@ async function main(): Promise<void> {
     assert.equal((await amountOf(feePayer.accountId, ETH.assetTypeId, null)) - externalBefore.feePayer, 8n);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
 
-    log.info('B. failed after mining: ok');
+    console.log('B. failed after mining: ok');
   }
 
   {
@@ -209,7 +191,7 @@ async function main(): Promise<void> {
     await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) });
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 400n);
 
-    log.info('C. inbox out-of-order + replay: ok');
+    console.log('C. inbox out-of-order + replay: ok');
   }
 
   {
@@ -238,7 +220,7 @@ async function main(): Promise<void> {
     await broadcast();
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMED.id), 1000n);
 
-    log.info('D. rejected broadcast closes the withdraw: ok');
+    console.log('D. rejected broadcast closes the withdraw: ok');
   }
 
   {
@@ -257,20 +239,17 @@ async function main(): Promise<void> {
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.SENT.id), 600n);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 0n);
 
-    assert.equal(
-      await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) }),
-      INBOX_EVENT_STATUS.APPLIED,
-    );
+    assert.equal(await inbox.ingest(INBOX_EVENT_KIND.BLOCKCHAIN_EVENT, { eventId: randomUUID(), payload: chain(S.CONFIRMING.id) }), INBOX_EVENT_STATUS.APPLIED);
     assert.equal(await amountOf(user.accountId, USDT.assetTypeId, S.CONFIRMING.id), 600n);
 
-    log.info('E. conservation check: ok');
+    console.log('E. conservation check: ok');
   }
 
-  log.info('failure-and-replay flows completed');
+  console.log('failure-and-replay flows completed');
   await sequelize.close();
 }
 
 main().catch((error) => {
-  log.error('flow failed', errorMeta(error));
+  console.error(error);
   process.exit(1);
 });

@@ -58,9 +58,7 @@ export class TransitionNotReadyError extends LedgerError {
   readonly disposition = ERROR_DISPOSITION.RETRYABLE;
 
   constructor(reference: number | string, currentStateId: number | null, targetStateId: number, reason?: string) {
-    super(
-      `Transition not ready: reference=${reference}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}${reason ? `, reason=${reason}` : ''}`,
-    );
+    super(`Transition not ready: reference=${reference}, current=${currentStateId ?? 'NONE'}, target=${targetStateId}${reason ? `, reason=${reason}` : ''}`);
   }
 }
 

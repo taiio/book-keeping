@@ -17,9 +17,7 @@ export class KafkaEventPublisher implements IEventPublisher {
     return this.producer.send(this.topic, {
       key: event.aggregate,
       value: JSON.stringify(event.payload),
-      headers: {
-        [KAFKA_HEADER.EVENT_ID]: deterministicUuid(`${SYSTEM_EVENT_NAME.STATE_CHANGED}:${event.aggregate}:${event.stateId}:${event.attempt}`),
-      },
+      headers: { [KAFKA_HEADER.EVENT_ID]: deterministicUuid(`${SYSTEM_EVENT_NAME.STATE_CHANGED}:${event.aggregate}:${event.stateId}:${event.attempt}`) },
     });
   }
 }

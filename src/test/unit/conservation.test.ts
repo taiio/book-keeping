@@ -12,11 +12,7 @@ const RECIPIENT_TOKEN_A = '3e9c5f4b-1d77-4a4e-8f88-6d4a0b2c53f5';
 const RECIPIENT_TOKEN_B = '4fad6a5c-2e88-4b5f-9a99-7e5b1c3d6406';
 const identity = (accountId: number) => ({ clientId: 1, accountId, assetId: 1, assetTypeId: 1, walletTypeId: 1 });
 
-const withdraw = (
-  senderQuantity: string,
-  recipientQuantities: string[],
-  transactionStateId: number = TRANSACTION_STATE.AUTHORIZING.id,
-): Withdraw => ({
+const withdraw = (senderQuantity: string, recipientQuantities: string[], transactionStateId: number = TRANSACTION_STATE.AUTHORIZING.id): Withdraw => ({
   type: TRANSACTION_TYPE.WITHDRAW,
   uuidToken: UUID,
   transactionStateId,

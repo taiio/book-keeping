@@ -9,10 +9,7 @@ const UUID = '0b6f2c1e-8a44-4d1b-9c55-3a1d7e9f20c2';
 
 describe('bookPostingIdempotencyToken', () => {
   it('is {jt}-{attempt}-{type}-{state}-{index}', () => {
-    assert.equal(
-      bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 2, transactionStateId: 1, attempt: 1, index: 1 }),
-      `${UUID}-1-2-1-1`,
-    );
+    assert.equal(bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 2, transactionStateId: 1, attempt: 1, index: 1 }), `${UUID}-1-2-1-1`);
   });
 
   it('is deterministic and differs by attempt and index', () => {
@@ -24,13 +21,7 @@ describe('bookPostingIdempotencyToken', () => {
   });
 
   it('stays within the column size for the largest ids', () => {
-    const token = bookPostingIdempotencyToken({
-      journalIdempotencyToken: UUID,
-      transactionTypeId: 5,
-      transactionStateId: 91,
-      attempt: 99,
-      index: 99,
-    });
+    const token = bookPostingIdempotencyToken({ journalIdempotencyToken: UUID, transactionTypeId: 5, transactionStateId: 91, attempt: 99, index: 99 });
 
     assert.ok(token.length <= POSTING_TOKEN.MAX_LENGTH);
   });

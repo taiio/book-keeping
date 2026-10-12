@@ -44,9 +44,7 @@ export class FakeInboxRepository {
   }
 
   async findPending(limit: number, dueBefore?: Date) {
-    return this.events
-      .filter((event) => event.status === INBOX_EVENT_STATUS.PENDING && (!dueBefore || event.nextAttemptAt <= dueBefore))
-      .slice(0, limit);
+    return this.events.filter((event) => event.status === INBOX_EVENT_STATUS.PENDING && (!dueBefore || event.nextAttemptAt <= dueBefore)).slice(0, limit);
   }
 
   async markOutcome(event: FakeEvent, status: InboxEventStatusId, detail: InboxOutcomeDetail) {

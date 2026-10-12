@@ -72,11 +72,7 @@ describe('out-of-order messages', () => {
 
     assert.deepEqual(
       repo.events.map((event) => [event.eventId, event.status]),
-      [
-        ['late', S.APPLIED],
-        ['later', S.APPLIED],
-        ['first', S.APPLIED],
-      ],
+      [['late', S.APPLIED], ['later', S.APPLIED], ['first', S.APPLIED]],
     );
     assert.deepEqual([...ledger.applied], ['first', 'late', 'later']);
   });
