@@ -12,3 +12,5 @@ export * from './lookup';
 export * from './kafka';
 export * from './migration';
 export * from './balance';
+export * from './grpc';
+export * from './runtime';

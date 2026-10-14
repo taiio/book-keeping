@@ -3,35 +3,17 @@ export interface AssetRef {
   walletTypeId: number;
 }
 
-export interface GetBalanceQuery {
+export interface BalanceQuery {
   clientId: number;
   accountId: number;
-  assets: AssetRef[];
+  assets: AssetRef[] | null;
 }
 
-export interface GetBalancesQuery {
-  clientId: number;
-  accountId: number;
-}
-
-export interface FindCustodyBooksParams {
-  clientId: number;
-  accountId: number;
-  assets?: AssetRef[];
-}
-
-export interface AssetBalanceView {
+export interface BalanceBook {
   assetId: number;
   assetTypeId: number;
-  walletTypeId: number;
   assetTicker: string;
-
-  balance: string;
-  availableBalance: string;
-}
-
-export interface AccountBalanceView {
-  clientId: number;
-  accountId: number;
-  balances: AssetBalanceView[];
+  walletTypeId: number;
+  transactionStateId: number | null;
+  amount: string;
 }

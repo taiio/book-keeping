@@ -1,35 +1,31 @@
 import 'reflect-metadata';
 
-import { container } from 'tsyringe';
-
 import { sequelize } from './config/database';
 import { env } from './config/env';
-import { logger } from './config/logger';
 import { SHUTDOWN_SIGNALS } from './constants';
-import { BalanceGrpcServer } from './grpc/BalanceGrpcServer';
-import { BalanceService } from './ledger/BalanceService';
+import { startGrpc } from './grpc/startGrpc';
 import { startMessaging } from './messaging/runtime/startMessaging';
-import type { MessagingRuntime } from './types';
+import type { Stoppable } from './types';
 
-function registerShutdown(messaging: MessagingRuntime | null, grpcServer: BalanceGrpcServer): void {
+function registerShutdown(runtimes: readonly Stoppable[]): void {
   let closing = false;
 
   const shutdown = async (signal: string): Promise<void> => {
     if (closing) return;
 
     closing = true;
-    logger.info('shutdown signal received', { signal });
+    console.log(`[shutdown] ${signal} received`);
 
     const forceExit = setTimeout(() => process.exit(1), env.shutdownGracePeriodMs);
 
     try {
-      await grpcServer.stop();
-      await messaging?.stop();
+      for (const runtime of [...runtimes].reverse()) await runtime.stop();
+
       await sequelize.close();
       clearTimeout(forceExit);
       process.exit(0);
     } catch (error) {
-      logger.error('shutdown failed', { error: error instanceof Error ? error.stack : String(error) });
+      console.error('[shutdown] failed', error);
       process.exit(1);
     }
   };
@@ -39,17 +35,18 @@ function registerShutdown(messaging: MessagingRuntime | null, grpcServer: Balanc
 
 async function main(): Promise<void> {
   await sequelize.authenticate();
-  logger.info('db connection established');
+  console.log('[db] connection established');
 
-  const messaging = env.kafka.enabled ? await startMessaging() : null;
+  const runtimes: Stoppable[] = [];
 
-  const grpcServer = new BalanceGrpcServer(container.resolve(BalanceService), logger);
-  await grpcServer.start();
+  if (env.grpc.enabled) runtimes.push(await startGrpc());
 
-  registerShutdown(messaging, grpcServer);
+  if (env.kafka.enabled) runtimes.push(await startMessaging());
+
+  registerShutdown(runtimes);
 }
 
 main().catch((error) => {
-  logger.error('failed to start service', { error: error instanceof Error ? error.stack : String(error) });
+  console.error('[bootstrap] failed to start service', error);
   process.exit(1);
 });

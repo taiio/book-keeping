@@ -4,6 +4,7 @@ import { UnitOfWork } from '../common/UnitOfWork';
 import { container } from '../config/container';
 import { BlockchainEventHandler } from '../handlers/BlockchainEventHandler';
 import { SystemTransactionHandler } from '../handlers/SystemTransactionHandler';
+import { BalanceGrpcHandler } from '../grpc/BalanceGrpcHandler';
 import { ConservationVerifier } from '../ledger/ConservationVerifier';
 import { LedgerPipeline } from '../ledger/LedgerPipeline';
 import { InboxHandlerRegistry } from '../messaging/InboxHandlerRegistry';
@@ -12,6 +13,8 @@ import { InboxService } from '../messaging/InboxService';
 import { OutboxHandlerRegistry } from '../messaging/OutboxHandlerRegistry';
 import { OutboxRelay } from '../messaging/OutboxRelay';
 import { BLOCKCHAIN_SUBMITTER, DEAD_LETTER_PUBLISHER, EVENT_PUBLISHER } from '../ports';
+import { BalanceQueryService } from '../queries/BalanceQueryService';
+import { BalanceRepository } from '../repositories/BalanceRepository';
 import { BookPostingRepository } from '../repositories/BookPostingRepository';
 import { BookRepository } from '../repositories/BookRepository';
 import { InboxEventRepository } from '../repositories/InboxEventRepository';
@@ -36,6 +39,9 @@ const TOKENS: ReadonlyArray<readonly [string, Token]> = [
   ['InboxService', InboxService],
   ['OutboxHandlerRegistry', OutboxHandlerRegistry],
   ['OutboxRelay', OutboxRelay],
+  ['BalanceRepository', BalanceRepository],
+  ['BalanceQueryService', BalanceQueryService],
+  ['BalanceGrpcHandler', BalanceGrpcHandler],
   [`token ${EVENT_PUBLISHER}`, EVENT_PUBLISHER],
   [`token ${DEAD_LETTER_PUBLISHER}`, DEAD_LETTER_PUBLISHER],
   [`token ${BLOCKCHAIN_SUBMITTER}`, BLOCKCHAIN_SUBMITTER],

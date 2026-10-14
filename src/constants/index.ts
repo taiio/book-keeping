@@ -13,3 +13,4 @@ export * from './transition';
 export * from './validation';
 export * from './kafka';
 export * from './migration';
+export * from './grpc';

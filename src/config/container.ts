@@ -16,11 +16,13 @@ import '../repositories/InboxEventRepository';
 import '../repositories/OutboxEventRepository';
 import '../ledger/LedgerPipeline';
 import '../ledger/ConservationVerifier';
-import '../ledger/BalanceService';
 import '../handlers/SystemTransactionHandler';
 import '../handlers/BlockchainEventHandler';
 import '../messaging/InboxService';
 import '../messaging/OutboxRelay';
+import '../repositories/BalanceRepository';
+import '../queries/BalanceQueryService';
+import '../grpc/BalanceGrpcHandler';
 
 if (!container.isRegistered(EVENT_PUBLISHER)) container.registerInstance(EVENT_PUBLISHER, new NoopEventPublisher());
 if (!container.isRegistered(DEAD_LETTER_PUBLISHER)) container.registerInstance(DEAD_LETTER_PUBLISHER, new NoopDeadLetterPublisher());

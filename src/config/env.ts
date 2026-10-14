@@ -42,8 +42,12 @@ export const env = {
   },
 
   grpc: {
+    enabled: readBool('GRPC_ENABLED', true),
     host: readString('GRPC_HOST', '0.0.0.0'),
     port: readInt('GRPC_PORT', 50051),
+    tlsCertFile: readString('GRPC_TLS_CERT_FILE', ''),
+    tlsKeyFile: readString('GRPC_TLS_KEY_FILE', ''),
+    tlsCaFile: readString('GRPC_TLS_CA_FILE', ''),
 
     maxConcurrentStreams: readInt('GRPC_MAX_CONCURRENT_STREAMS', 200),
   },
